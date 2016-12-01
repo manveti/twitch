@@ -57,7 +57,7 @@ function getAuthInfo(){
 
 LENGTH_EXP = re.compile("^Content-Length:\s*(?P<len>\d+)\s*$", re.I + re.M)
 
-exp = "^(:(?P<prefix>[^ \r\n]+) )?(?P<command>([a-zA-Z]+|[0-9]{3}))"
+exp = "^(@(?P<tags>[^ \r\n]+) )?(:(?P<prefix>[^ \r\n]+) )?(?P<command>([a-zA-Z]+|[0-9]{3}))"
 exp += "(?P<params>( [^: \r\n][^ \r\n]*){0,14})( :(?P<final>[^\r\n]+))?$"
 IRC_MSG_EXP = re.compile(exp)
 IRC_PREFIX_EXP = re.compile("[@!.]")
@@ -164,10 +164,17 @@ class ChatCallbacks:
     def userJoined(self, channel, user):
 	pass
 
+    def usersJoined(self, channel, users):
+	for user in users:
+	    self.userJoined(channel, user)
+
     def userLeft(self, channel, user):
 	pass
 
-    def chatMessage(self, channel, user, msg):
+    def chatMessage(self, channel, user, msg, userDisplay=None, userColor=None, userBadges=set(), emotes=[]):
+	pass
+
+    def otherCommand(self, command, tags, prefix, params):
 	pass
 
 class Chat:
@@ -179,7 +186,8 @@ class Chat:
 	self.oauth = oauth
 
 	userInfo = getApi("/user", self.oauth)
-	self.displayName = userInfo.get('display_name', userInfo.get('name'))
+	self.userName = userInfo.get('name')
+	self.displayName = userInfo.get('display_name', self.userName)
 
 	self.socket = None
 	self.running = False
@@ -196,11 +204,27 @@ class Chat:
 	self.thread = threading.Thread(target=self.recvThread)
 	self.thread.start()
 	self.socket.send("CAP REQ :twitch.tv/membership\r\n")
+	self.socket.send("CAP REQ :twitch.tv/commands\r\n")
+	self.socket.send("CAP REQ :twitch.tv/tags\r\n")
 
     def disconnect(self):
+	for channel in self.channels.keys():
+	    self.leave(channel)
 	self.running = False
 
     def recvThread(self):
+	def decodeUser(s):
+	    splits = IRC_PREFIX_EXP.split(s or "")
+	    if ((splits) and (splits[0])):
+		return splits[0]
+	    return "<server>"
+	def decodeChannel(s):
+	    if (s[0] == "#"):
+		return s[1:]
+	    return s
+	def unescapeTags(s):
+	    s = s.replace("\\:", ";").replace("\\s", " ").replace("\\\\", "\\")
+	    return s.replace("\\r", "\r").replace("\\n", "\n")
 	while (self.running):
 	    if (not select.select([self.socket], [], [], READ_INTERVAL)[0]):
 		continue
@@ -211,6 +235,7 @@ class Chat:
 		m = IRC_MSG_EXP.match(line)
 		cmd = m.group('command')
 		params = m.group('params').split(" ")[1:]
+		tags = map(unescapeTags, (m.group('tags') or "").split(";"))
 		if (m.group('final')):
 		    params.append(m.group('final'))
 		if (cmd == "PING"):
@@ -219,34 +244,106 @@ class Chat:
 		if (cmd == "PRIVMSG"):
 		    if ((not params) or (not params[0])):
 			continue
-		    channel = params[0]
-		    if (channel[0] == "#"):
-			channel = channel[1:]
-		    user = "<anonymous>"
-		    if (m.group('prefix')):
-			splits = IRC_PREFIX_EXP.split(m.group('prefix'))
-			if ((splits) and (splits[0])):
-			    user = splits[0]
+		    channel = decodeChannel(params[0])
+		    user = decodeUser(m.group('prefix'))
+		    display = None
+		    color = None
+		    badges = set()
+		    emotes = []
+		    for tag in tags:
+			tagSplits = tag.split("=", 1)
+			if (len(tagSplits) > 1):
+			    if (tagSplits[0] == "display-name"):
+				display = tagSplits[1]
+				continue
+			    if (tagSplits[0] == "color"):
+				color = tagSplits[1]
+				continue
+			    if (tagSplits[0] == "badges"):
+				badges = set(tagSplits[1].split(","))
+				continue
+			    if (tagSplits[0] == "emotes"):
+				for spec in tagSplits[1].split("/"):
+				    emoteSplits = spec.split(":")
+				    if (len(emoteSplits) != 2):
+					continue
+				    emoteId = int(emoteSplits[0])
+				    for loc in emoteSplits[1].split(","):
+					locSplits = loc.split("-")
+					if (len(locSplits) != 2):
+					    continue
+					emotes.append((int(locSplits[0]), int(locSplits[1]), emoteId))
+				continue
+		    emotes.sort()
 		    msg = " ".join(params[1:])
-		    self.callbacks.chatMessage(channel, user, msg)
+		    self.callbacks.chatMessage(channel, user, msg, display, color, badges, emotes)
+		    continue
+		if (cmd in ["JOIN", "PART"]):
+		    if ((not params) or (not params[0])):
+			continue
+		    channel = decodeChannel(params[0])
+		    user = decodeUser(m.group('prefix'))
+		    if (cmd == "JOIN"):
+			self.callbacks.userJoined(channel, user)
+		    if (cmd == "PART"):
+			self.callbacks.userLeft(channel, user)
+		    continue
+		if (cmd == "353"):
+		    if ((len(params) < 4) or (not params[2])):
+			continue
+		    channel = decodeChannel(params[2])
+		    users = set(params[3:])
+		    self.callbacks.usersJoined(channel, users)
+		if (cmd == "USERSTATE"):
+		    if ((not params) or (not params[0])):
+			continue
+		    channel = decodeChannel(params[0])
+		    if (not self.channels.has_key(channel)):
+			continue
+		    for tag in tags:
+			tagSplits = tag.split("=", 1)
+			if (len(tagSplits) > 1):
+			    if (tagSplits[0] == "display-name"):
+				self.channels[channel]['display'] = tagSplits[1]
+				continue
+			    if (tagSplits[0] == "color"):
+				self.channels[channel]['color'] = tagSplits[1]
+				continue
+			    if (tagSplits[0] == "badges"):
+				self.channels[channel]['badges'] = set(tagSplits[1].split(","))
+				continue
+#####
+##
+			    #maybe handle emote-sets, mod, subscriber
+##
+#####
+		    if (not self.channels[channel]['pending']):
+			continue
+		    msg = self.channels[channel]['pending'].pop(0)
+		    display = self.channels[channel].get('display', self.displayName)
+		    color = self.channels[channel].get('color')
+		    badges = self.channels[channel].get('badges')
+#####
+##
+		    #figure out emotes in msg
+		    emotes=[]
+##
+#####
+		    self.callbacks.chatMessage(channel, self.userName, msg, display, color, badges, emotes)
 		    continue
 #####
 ##
-		#handle JOIN and PART commands at least
-		#messages we can get:
-		#  ":${server} \d{3} ${user} :${msg}"
-		#  ":${user}!${user}@${user}.${server} JOIN ${channel}"
-		#  ":${user}.${server} \d{3} ${user} = ${channel} :${user}" //353
-		#  ":${user}.${server} \d{3} ${user} ${channel} :End of /NAMES list" //366
-		#  ":${user}!${user}@${user}.${server} PRIVMSG ${channel} :${msg}"
-		#  ":${user}!${user}@${user}.tmi.twitch.tv PRIVMSG ${channel} :${msg}\r\n"
-		#in general:
-		#  "(:${prefix} )?${command}( ${param}){0,15}"
-		#  prefix is origin of message ("${server}" or "${nick}(!${user})?(@${host})?")
-		#  command is irc command or 3-digit code
-		#  only last param can begin with ':'; param not beginning with ':' cannot have space
+		#probably handle:
+		#  NOTICE: ["#${channel}", explanation]; event info in tags
+		#  RECONNECT (requires CAP REQ :twitch.tv/commands): disconnect, reconnect, and rejoin channels
+		#maybe handle:
+		#  MODE (user gained/lost moderator): ["#${channel}", "+o"|"-o", user]
+		#  HOSTTARGET (start/stop host): ["#${hosting_channel}", "${-|hosted_channel} ${number_of_viewers}"]
+		#  CLEARCHAT: ["#${channel}", optional_banned_user]; duration and reason in tags
+		#  USERNOTICE (resub): ["#${channel}", optional_message]; tags give user, sub length, etc.
 ##
 #####
+		self.callbacks.otherCommand(cmd, tags, m.group('prefix'), params)
 	self.socket.close()
 	self.socket = None
 
@@ -257,7 +354,7 @@ class Chat:
 	    channel = channel[1:]
 	if (self.channels.has_key(channel)):
 	    return
-	self.channels[channel] = set()
+	self.channels[channel] = {'pending': []}
 	self.socket.send("JOIN #%s\r\n" % channel)
 
     def leave(self, channel):
@@ -267,3 +364,11 @@ class Chat:
 	    return
 	self.socket.send("PART #%s\r\n" % channel)
 	del self.channels[channel]
+
+    def send(self, channel, msg):
+	if (channel[0] == "#"):
+	    channel = channel[1:]
+	if ((not self.socket) or (not self.channels.has_key(channel))):
+	    return
+	self.channels[channel]['pending'].append(msg)
+	self.socket.send("PRIVMSG #%s :%s\r\n" % (channel, msg))

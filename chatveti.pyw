@@ -4,6 +4,7 @@ import base64
 import os.path
 import shelve
 import Tkinter
+import time
 import Tix
 import ttk
 
@@ -11,24 +12,94 @@ import Tkx
 import Twitch
 
 
-DEFAULT_PREFERENCES = {'userPaneVisible': True}
+DEFAULT_PREFERENCES = {
+    'maxInputHistory':		100,
+    'userPaneVisible':		True,
+}
 
 
 class ChatCallbackFunctions(Twitch.ChatCallbacks):
     def __init__(self, master):
 	self.master = master
 
+    def userJoined(self, channel, user):
+	if (not self.master.channels.has_key(channel)):
+	    return
+	if (self.master.channels[channel].has_key(user)):
+	    return
 #####
 ##
-    def userJoined(self, channel, user):
-	pass
+	#setup self.master.channels[channel][user]
+	self.master.channels[channel][user] = {'display': user}
+	#if channel isn't active channel: return
+	#figure out where user goes in sorted user list
+	idx=Tkinter.END
+##
+#####
+	self.master.userList.insert(idx, user)
+
+    def usersJoined(self, channel, users):
+	if (not self.master.channels.has_key(channel)):
+	    return
+#####
+##
+	#figure out if there are enough users coming in to merit clearing and redoing the whole list
+	return Twitch.ChatCallbacks.usersJoined(self, channel, users)
+##
+#####
 
     def userLeft(self, channel, user):
-	pass
+	if (not self.master.channels.has_key(channel)):
+	    return
+	if (not self.master.channels[channel].has_key(user)):
+	    return
+#####
+##
+	#if channel is active channel:
+	#  figure out user's position in list
+	#  self.userList.delete(idx)
+##
+#####
+	del self.master.channels[channel][user]
 
-    def chatMessage(self, channel, user, msg):
-	pass
-	self.master.chatBox.insert(Tkinter.END, "%s: %s\n" % (user, msg), None)
+    def chatMessage(self, channel, user, msg, userDisplay=None, userColor=None, userBadges=set(), emotes=[]):
+	if (not self.master.channels.has_key(channel)):
+	    return
+	if (not self.master.channels[channel].has_key(user)):
+	    self.master.channels[channel][user] = {'display': user}
+	if (not userDisplay):
+	    userDisplay = self.master.channels[channel][user].get('display')
+	self.master.channels[channel][user]['display'] = userDisplay
+	if (not userColor):
+	    userColor = self.master.channels[channel][user].get('color')
+	self.master.channels[channel][user]['color'] = userColor
+#####
+##
+	#update self.master.channels[channel][user] badges
+	#add (time.time(), user, msg, userDisplay, userColor, userBadges, emotes) to channel log
+	if ((userColor) and (not self.master.chatTags.has_key(userColor))):
+	    self.master.chatTags[userColor] = set([channel])
+#####
+##
+	    #make sure background is reasonable
+##
+#####
+	    self.master.chatBox.tag_configure(userColor, foreground=userColor)
+#####
+##
+	#(timestamp and general tags should be set up elsewhere, but not coded yet)
+	tsTags=None
+	userTags=userColor #single tag or tuple of tags
+	msgTags=None
+	#if showing timestamps: self.master.chatBox.insert(Tkinter.END, timestamp_string, tsTags)
+	#deal with badges
+##
+#####
+	self.master.chatBox.insert(Tkinter.END, userDisplay, userTags)
+#####
+##
+	#deal with emotes
+	self.master.chatBox.insert(Tkinter.END, ": %s\n" % msg, msgTags)
 ##
 #####
 
@@ -40,6 +111,16 @@ class MainGui(Tkinter.Frame):
 	self.loadPreferences()
 
 	self.channels = {}
+	self.curChannel = None
+	self.chat = None
+	self.chatTags = {}
+#####
+##
+	#scratch stuff
+##
+#####
+	self.inputHistory = []
+	self.inputHistoryPos = 0
 #####
 ##
 	#stuff
@@ -79,14 +160,6 @@ class MainGui(Tkinter.Frame):
 	self.chatPane = Tkinter.Frame(self.panes)
 	self.channelTabs = Tkx.ClosableNotebook(self.chatPane, height=0)
 	self.channelTabs.grid(row=0, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.S))
-#####
-##
-	fr1=Tkinter.Frame(self.channelTabs)
-	self.channelTabs.add(fr1,text="twogirls1game")
-	fr2=Tkinter.Frame(self.channelTabs)
-	self.channelTabs.add(fr2,text="geekandsundry")
-##
-#####
 	self.userPaneToggle = Tkinter.Button(self.chatPane, text=">", command=self.toggleUserPane)
 	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatGrid = Tkinter.Frame(self.chatPane)
@@ -111,11 +184,9 @@ class MainGui(Tkinter.Frame):
 	self.scratchBut.config(menu=self.scratchMen)
 	self.scratchBut.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatInputBox = Tkinter.Entry(self.chatPane)
-#####
-##
-	#chat input box keybindings
-##
-#####
+	self.chatInputBox.bind("<Return>", self.submitChatInput)
+	self.chatInputBox.bind("<Up>", self.inputUpHistory)
+	self.chatInputBox.bind("<Down>", self.inputDownHistory)
 	self.chatInputBox.grid(row=2, column=1, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 #####
 ##
@@ -131,12 +202,6 @@ class MainGui(Tkinter.Frame):
 	self.userPane = Tkinter.Frame(self.panes)
 	self.userGrid = Tkinter.Frame(self.userPane)
 	self.userList = Tkinter.Listbox(self.userGrid)
-#####
-##
-	self.userList.insert(Tkinter.END, "Bob Dole")
-	self.userList.insert(Tkinter.END, "manveti")
-##
-#####
 	self.userList.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.userVScroll = Tkinter.Scrollbar(self.userGrid, command=self.userList.yview)
 	self.userVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
@@ -189,22 +254,43 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	#prevent exit and return if necessary
-	self.chat.disconnect()
+	if(self.chat):self.chat.disconnect()
 ##
 #####
 	self.preferences.close()
 	self.master.destroy()
 
+    def openChannel(self):
 #####
 ##
-    def openChannel(self):
-	pass
-	self.chat = Twitch.Chat(ChatCallbackFunctions(self), base64.b64decode(self.preferences.get('token')))
-	self.chat.join("twogirls1game")
+	#get channel to join
+	channel="manveti" #"twogirls1game"
+	if (self.channels.has_key(channel)):
+	    #maybe warn about already connected and/or raise channel tab
+	    return
+	#get oauth (logging in if necessary)
+	oauth=base64.b64decode(self.preferences.get('token'))
+##
+######
+	if (not self.chat):
+	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
+	self.channels[channel] = {'users': {}, 'log': []}
+	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
+	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
+#####
+##
+	#raise tab
+##
+#####
+	self.curChannel = channel
+	self.chatBox.delete("1.0", Tkinter.END)
+	self.userList.delete(0, Tkinter.END)
+	self.chat.join(channel)
 
+#####
+##
     def openLog(self):
 	pass
-	self.chat.leave("twogirls1game")
 
     def saveLog(self):
 	pass
@@ -214,10 +300,25 @@ class MainGui(Tkinter.Frame):
 
     def exportLog(self):
 	pass
+##
+######
 
     def closeChannel(self):
-	pass
+	channel = self.curChannel
+	self.chat.leave(channel)
+#####
+##
+	#maybe prompt to confirm leaving without saving log
+	#remove tab
+	#if removing tab doesn't generate a change event:
+	#  figure out which channel's tab is raised now (if any are left)
+	#  switch self.curChannel, self.chatBox, and self.userList over to it
+##
+######
+	del self.channels[channel]
 
+#####
+##
     #other menu handlers
     #channelTabs handlers
 ##
@@ -240,6 +341,38 @@ class MainGui(Tkinter.Frame):
 	pass
 ##
 #####
+
+    def submitChatInput(self, e=None):
+	s = self.chatInputBox.get()
+	if (not s):
+	    return
+	self.inputHistory.append(s)
+	self.inputHistory = self.inputHistory[-self.preferences.get('maxInputHistory'):]
+	self.inputHistoryPos = len(self.inputHistory)
+	self.chatInputBox.delete(0, Tkinter.END)
+	if ((not self.chat) or (not self.curChannel) or (not self.channels.has_key(self.curChannel))):
+	    return
+	self.chat.send(self.curChannel, s)
+
+    def inputUpHistory(self, e=None):
+	if (self.inputHistoryPos > len(self.inputHistory)):
+	    self.inputHistoryPos = len(self.inputHistory)
+	if (self.inputHistoryPos <= 0):
+	    return
+	self.inputHistoryPos -= 1
+	self.chatInputBox.delete(0, Tkinter.END)
+	self.chatInputBox.insert(0, self.inputHistory[self.inputHistoryPos])
+
+    def inputDownHistory(self, e=None):
+	if (self.inputHistoryPos >= len(self.inputHistory)):
+	    return
+	self.inputHistoryPos += 1
+	if (self.inputHistoryPos >= len(self.inputHistory)):
+	    s = ""
+	else:
+	    s = self.inputHistory[self.inputHistoryPos]
+	self.chatInputBox.delete(0, Tkinter.END)
+	self.chatInputBox.insert(0, s)
 
 #####
 ##
