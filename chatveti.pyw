@@ -16,6 +16,7 @@ import Twitch
 
 DEFAULT_PREFERENCES = {
     'maxInputHistory':		100,
+    'maxScratchWidth':		50,
     'userPaneVisible':		True,
 }
 
@@ -141,11 +142,7 @@ class MainGui(Tkinter.Frame):
 	self.chatToPopulate = []
 	self.chatPopulateThread = None
 	self.chatTags = {}
-#####
-##
-	#scratch stuff
-##
-#####
+	self.scratchMsgs = []
 	self.inputHistory = []
 	self.inputHistoryPos = 0
 #####
@@ -266,7 +263,7 @@ class MainGui(Tkinter.Frame):
 
 #####
 ##
-	#configure self.chatBox tags
+	#configure self.chatBox timestamp and message tags
 ##
 #####
 
@@ -398,12 +395,30 @@ class MainGui(Tkinter.Frame):
 	    self.preferences['userPaneVisible'] = True
 	self.savePreferences()
 
-#####
-##
     def scratchInput(self):
-	pass
-##
-#####
+	s = self.chatInputBox.get()
+	if ((not s) or (s in self.scratchMsgs)):
+	    return
+	self.scratchMsgs.append(s)
+	maxWidth = self.preferences.get('maxScratchWidth', DEFAULT_PREFERENCES['maxScratchWidth'])
+	if (len(s) <= maxWidth):
+	    shortS = s
+	else:
+	    shortS = s[:maxWidth / 2 - 1] + "..." + s[-((maxWidth - 1) / 2 - 1):]
+	self.scratchMen.add_command(label=shortS, command=lambda cmd=s: self.scratchCmd(cmd))
+	self.chatInputBox.delete(0, Tkinter.END)
+
+    def scratchCmd(self, s):
+	if (not s):
+	    return
+	self.chatInputBox.delete(0, Tkinter.END)
+	self.chatInputBox.insert(0, s)
+	try:
+	    idx = self.scratchMsgs.index(s)
+	except ValueError:
+	    return
+	self.scratchMsgs = self.scratchMsgs[:idx] + self.scratchMsgs[idx + 1:]
+	self.scratchMen.delete(idx + 2)
 
     def submitChatInput(self, e=None):
 	s = self.chatInputBox.get()
@@ -446,11 +461,6 @@ class MainGui(Tkinter.Frame):
     def populateChat(self, log):
 	self.chatBoxLock.acquire()
 	self.chatBox.delete("1.0", Tkinter.END)
-#####
-##
-	#populate self.chatBox from the end of channelDict['log'] to the start
-##
-#####
 	self.chatToPopulate = log[:]
 	self.chatBoxLock.release()
 	if (not self.chatPopulateThread):
