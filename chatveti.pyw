@@ -86,7 +86,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	if (not self.master.channels.has_key(channel)):
 	    return
 	updateUserList = False
-	if (not self.master.channels[channel].has_key(user)):
+	if (not self.master.channels[channel]['users'].has_key(user)):
 	    self.master.channels[channel]['userLock'].acquire()
 	    self.master.channels[channel]['users'][user] = {'display': user}
 	    self.master.channels[channel]['userLock'].release()
@@ -164,6 +164,9 @@ class MainGui(Tkinter.Frame):
 	self.chatToPopulate = []
 	self.chatPopulateThread = None
 	self.chatTags = {}
+	self.searchString = None
+	self.lastSearchString = ""
+	self.searchBackwards = False
 	self.scratchMsgs = []
 	self.inputHistory = []
 	self.inputHistoryPos = 0
@@ -228,11 +231,12 @@ class MainGui(Tkinter.Frame):
 	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatGrid = Tkinter.Frame(self.chatPane)
 	self.chatBox = Tkinter.Text(self.chatGrid, wrap=Tkinter.NONE)
-#####
-##
-	#chat box keybindings
-##
-#####
+	self.chatBox.bind("<Control-c>", self.copyChat)
+	self.chatBox.bind("<Control-f>", self.startChatSearch)
+	self.chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
+	self.chatBox.bind("<Key>", self.handleChatKey)
+	self.chatBox.bind("<FocusOut>", self.stopChatSearch)
+	self.chatBox.bind("<Button>", self.stopChatSearch)
 	self.chatBox.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatVScroll = Tkinter.Scrollbar(self.chatGrid, command=self.chatBox.yview)
 	self.chatVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
@@ -319,6 +323,7 @@ class MainGui(Tkinter.Frame):
 ##
 	#prevent exit and return if necessary
 	self.chatToPopulate = []
+	self.chat.callbacks = Twitch.ChatCallbacks()
 	if(self.chat):self.chat.disconnect()
 ##
 #####
@@ -412,6 +417,13 @@ class MainGui(Tkinter.Frame):
 	self.channelOrder = self.channelOrder[:idx] + self.channelOrder[idx + 1:]
 	del self.channels[channel]
 	self.curChannel = None
+	if (not self.channels):
+	    self.chatBoxLock.acquire()
+	    self.chatBox.delete("1.0", Tkinter.END)
+	    self.chatBoxLock.release()
+	    self.userListLock.acquire()
+	    self.userList.delete(0, Tkinter.END)
+	    self.userListLock.release()
 
     def toggleUserPane(self):
 	if (self.preferences.get('userPaneVisible')):
@@ -423,6 +435,53 @@ class MainGui(Tkinter.Frame):
 	    self.userPaneToggle.configure(text=">")
 	    self.preferences['userPaneVisible'] = True
 	self.savePreferences()
+
+    def copyChat(self, e):
+	self.chatBox.clipboard_clear()
+	self.chatBox.clipboard_append(self.chatBox.get("sel.first", "sel.last"))
+
+    def startChatSearch(self, e):
+	self.searchBackwards = False
+	if (self.searchString is None):
+	    self.searchString = ""
+	else:
+	    if (not self.searchString):
+		self.searchString = self.lastSearchString
+	    self.doSearch(skip=True)
+	return "break"
+
+    def startBackwardsChatSearch(self, e):
+	self.searchBackwards = True
+	if (self.searchString is None):
+	    self.searchString = ""
+	else:
+	    if (not self.searchString):
+		self.searchString = self.lastSearchString
+	    self.doSearch(skip=True)
+	return "break"
+
+    def handleChatKey(self, e):
+	if (e.keysym in ["Up", "Down", "Left", "Right", "Home", "End"]):
+	    self.stopChatSearch()
+	    return
+	if (self.searchString is None):
+	    return "break"
+	if (e.keysym == "Escape"):
+	    self.stopChatSearch()
+	    return "break"
+	if (e.keysym == "BackSpace"):
+	    self.searchString = self.searchString[:-1]
+	    return "break"
+	if ((not hasattr(e, 'char')) or (not e.char)):
+	    return "break"
+	self.searchString += e.char
+	self.doSearch()
+	return "break"
+
+    def stopChatSearch(self, e=None):
+	if (self.searchString):
+	    self.lastSearchString = self.searchString
+	self.searchString = None
 
     def scratchInput(self):
 	s = self.chatInputBox.get()
@@ -569,6 +628,26 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	    self.chatBoxLock.release()
+
+    def doSearch(self, skip=False):
+	idx = Tkinter.INSERT
+	if (bool(self.searchBackwards) != bool(skip)):
+	    idx += " + %s chars" % len(self.searchString)
+	nocase = (self.searchString == self.searchString.lower())
+	pos = self.chatBox.search(self.searchString, idx, backwards=self.searchBackwards, nocase=nocase)
+	if (not pos):
+	    if (self.searchBackwards):
+		idx = Tkinter.END
+	    else:
+		idx = "1.0"
+	    pos = self.chatBox.search(self.searchString, idx, backwards=self.searchBackwards, nocase=nocase)
+	if (pos):
+	    self.chatBox.tag_remove(Tkinter.SEL, "1.0", Tkinter.END)
+	    self.chatBox.mark_set(Tkinter.SEL_FIRST, pos)
+	    self.chatBox.mark_set(Tkinter.SEL_LAST, pos + " + %s chars" % len(self.searchString))
+	    self.chatBox.tag_add(Tkinter.SEL, Tkinter.SEL_FIRST, Tkinter.SEL_LAST)
+	    self.chatBox.mark_set(Tkinter.INSERT, pos)
+	    self.chatBox.see(pos)
 
 
 mainWin = MainGui(Tix.Tk())
