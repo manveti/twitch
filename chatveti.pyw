@@ -15,9 +15,11 @@ import Twitch
 
 
 DEFAULT_PREFERENCES = {
+    'brightnessThreshold':	80,
     'maxInputHistory':		100,
     'maxScratchWidth':		50,
     'userPaneVisible':		True,
+    'wrapChatText':		True,
 }
 
 EVENT_MSG = 0
@@ -25,6 +27,21 @@ EVENT_JOIN = 1
 EVENT_LEAVE = 2
 
 CHAT_POPULATE_INTERVAL = 0.1
+
+
+def getColorBrightness(c):
+#####
+##
+    #return int(round((0.299 * c[0] * c[0] + 0.587 * c[1] * c[1] + 0.114 * c[2] * c[2]) ** 0.5))
+    return int(round(0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]))
+##
+#####
+
+def hexToRgb(c):
+    return (int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16))
+
+def rgbToHex(c):
+    return "#%02x%02x%02x" % c
 
 
 class ChatCallbackFunctions(Twitch.ChatCallbacks):
@@ -122,12 +139,18 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.release()
 	if ((userColor) and (not self.master.chatTags.has_key(userColor))):
 	    self.master.chatTags[userColor] = set([channel])
-#####
-##
-	    #make sure background is reasonable
-##
-#####
-	    self.master.chatBox.tag_configure(userColor, foreground=userColor)
+	    kwargs = {'foreground': userColor}
+	    bgColor = self.master.preferences.get('chatBgColor')
+	    needBg = True
+	    if (not bgColor):
+		bgColor = self.master.translateColor(self.master.chatBox.cget('bg'))
+		needBg = False
+	    adjustedBg = self.master.adjustHexColor(bgColor, userColor)
+	    if (adjustedBg != bgColor):
+		needBg = True
+	    if (needBg):
+		kwargs['background'] = adjustedBg
+	    self.master.chatBox.tag_configure(userColor, **kwargs)
 	elif (userColor):
 	    self.master.chatTags[userColor].add(channel)
 #####
@@ -137,6 +160,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	userTags=userColor #single tag or tuple of tags
 	msgTags=None
 	self.master.chatBoxLock.acquire()
+	oldPos = self.master.chatBox.yview()
 	#if showing timestamps: self.master.chatBox.insert(Tkinter.END, timestamp_string, tsTags)
 	#deal with badges
 ##
@@ -148,6 +172,8 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.chatBox.insert(Tkinter.END, ": %s\n" % msg, msgTags)
 ##
 #####
+	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
+	    self.master.chatBox.see(Tkinter.END)
 	self.master.chatBoxLock.release()
 
 
@@ -230,7 +256,11 @@ class MainGui(Tkinter.Frame):
 	self.userPaneToggle = Tkinter.Button(self.chatPane, text=">", command=self.toggleUserPane)
 	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatGrid = Tkinter.Frame(self.chatPane)
-	self.chatBox = Tkinter.Text(self.chatGrid, wrap=Tkinter.NONE)
+	if (self.preferences.get('wrapChatText')):
+	    wrap = Tkinter.WORD
+	else:
+	    wrap = Tkinter.NONE
+	self.chatBox = Tkinter.Text(self.chatGrid, wrap=wrap)
 	self.chatBox.bind("<Control-c>", self.copyChat)
 	self.chatBox.bind("<Control-f>", self.startChatSearch)
 	self.chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
@@ -242,6 +272,7 @@ class MainGui(Tkinter.Frame):
 	self.chatVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatHScroll = Tkinter.Scrollbar(self.chatGrid, orient=Tkinter.HORIZONTAL, command=self.chatBox.xview)
 	self.chatHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	self.chatBox.configure(xscrollcommand=self.chatHScroll.set, yscrollcommand=self.chatVScroll.set)
 	self.chatGrid.columnconfigure(0, weight=1)
 	self.chatGrid.rowconfigure(0, weight=1)
 	self.chatGrid.grid(row=1, column=0, columnspan=3, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
@@ -275,6 +306,7 @@ class MainGui(Tkinter.Frame):
 	self.userVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.userHScroll = Tkinter.Scrollbar(self.userGrid, orient=Tkinter.HORIZONTAL, command=self.userList.xview)
 	self.userHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	self.userList.configure(xscrollcommand=self.userHScroll.set, yscrollcommand=self.userVScroll.set)
 	self.userGrid.columnconfigure(0, weight=1)
 	self.userGrid.rowconfigure(0, weight=1)
 	self.userGrid.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
@@ -581,6 +613,48 @@ class MainGui(Tkinter.Frame):
 	users.sort(key=lambda u: self.channels[channel]['users'][u].get('display', u).lower())
 	return users
 
+    def adjustColor(self, c, ref):
+	threshold = self.preferences.get('brightnessThreshold', DEFAULT_PREFERENCES['brightnessThreshold'])
+	cBr = getColorBrightness(c)
+	rBr = getColorBrightness(ref)
+	if (abs(cBr - rBr) >= threshold):
+	    return c
+	if (cBr != 0):
+	    if (cBr < rBr):
+		# see if we can push c darker without pushing below 0
+		f = float(rBr - threshold) / cBr
+		t = (c[0] * f, c[1] * f, c[2] * f)
+		if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		    return t
+	    else:
+		# see if we can push c lighter without pushing above 255
+		f = float(rBr + threshold) / cBr
+		t = (c[0] * f, c[1] * f, c[2] * f)
+		if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		    return t
+	# if we got here, we'll have to push the other direction
+	if (rBr < 128):
+	    # ref is dark, so push c lighter
+	    if (cBr == 0):
+		return (255, 255, 255)
+	    f = float(rBr + threshold) / cBr
+	    return (min(c[0] * f, 255), min(c[1] * f, 255), min(c[2] * f, 255))
+	else:
+	    # ref is light, so push c darker
+	    if (cBr == 0):
+		return (0, 0, 0)
+	    f = max(float(rBr - threshold) / cBr, 0)
+	    return (min(c[0] * f, 255), min(c[1] * f, 255), min(c[2] * f, 255))
+
+    def adjustHexColor(self, c, ref):
+	return rgbToHex(self.adjustColor(hexToRgb(c), hexToRgb(ref)))
+
+    def translateColor(self, c):
+	if (not c):
+	    return "#000000"
+	t16 = self.winfo_rgb(c)
+	return rgbToHex((t16[0] / 256, t16[1] / 256, t16[2] / 256))
+
     def populateChat(self, log):
 	self.chatBoxLock.acquire()
 	self.chatBox.delete("1.0", Tkinter.END)
@@ -607,12 +681,18 @@ class MainGui(Tkinter.Frame):
 	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
 	    if ((userColor) and (not self.chatTags.has_key(userColor))):
 		self.chatTags[userColor] = set([self.curChannel])
-#####
-##
-		#make sure background is reasonable
-##
-#####
-		self.chatBox.tag_configure(userColor, foreground=userColor)
+		kwargs = {'foreground': userColor}
+		bgColor = self.preferences.get('chatBgColor')
+		needBg = True
+		if (not bgColor):
+		    needBg = False
+		    bgColor = self.translateColor(self.chatBox.cget('bg'))
+		adjustedBg = self.adjustHexColor(bgColor, userColor)
+		if (adjustedBg != bgColor):
+		    needBg = True
+		if (needBg):
+		    kwargs['background'] = adjustedBg
+		self.chatBox.tag_configure(userColor, **kwargs)
 	    elif (userColor):
 		self.chatTags[userColor].add(self.curChannel)
 #####
