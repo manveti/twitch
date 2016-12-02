@@ -36,16 +36,14 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    return
 	if (self.master.channels[channel]['users'].has_key(user)):
 	    return
+	self.master.channels[channel]['userLock'].acquire()
 	self.master.channels[channel]['users'][user] = {'display': user}
+	self.master.channels[channel]['userLock'].release()
 	self.master.channels[channel]['log'].append((EVENT_JOIN, user))
 	if (channel != self.master.curChannel):
 	    return
-#####
-##
-	#figure out where user goes in sorted user list
-	idx=Tkinter.END
-##
-#####
+	userSort = self.master.getSortedUsers(channel)
+	idx = userSort.index(user)
 	self.master.userListLock.acquire()
 	self.master.userList.insert(idx, user)
 	self.master.userListLock.release()
@@ -53,12 +51,20 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
     def usersJoined(self, channel, users):
 	if (not self.master.channels.has_key(channel)):
 	    return
-#####
-##
-	#figure out if there are enough users coming in to merit clearing and redoing the whole list
-	return Twitch.ChatCallbacks.usersJoined(self, channel, users)
-##
-#####
+	if (len(users) < len(self.master.channels[channel]['users']) / 2):
+	    return Twitch.ChatCallbacks.usersJoined(self, channel, users)
+	self.master.channels[channel]['userLock'].acquire()
+	for user in users:
+	    self.master.channels[channel]['users'][user] = {'display': user}
+	    self.master.channels[channel]['log'].append((EVENT_JOIN, user))
+	self.master.channels[channel]['userLock'].release()
+	if (channel != self.master.curChannel):
+	    return
+	self.master.userListLock.acquire()
+	self.master.userList.delete(0, Tkinter.END)
+	for user in self.master.getSortedUsers(channel):
+	    self.master.userList.insert(Tkinter.END, user)
+	self.master.userListLock.release()
 
     def userLeft(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
@@ -67,37 +73,53 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    return
 	self.master.channels[channel]['log'].append((EVENT_LEAVE, user))
 	if (channel == self.master.curChannel):
-#####
-##
-	    pass
-	    #figure out user's position in list
-	    #self.master.userListLock.acquire()
-	    #self.master.userList.delete(idx)
-	    #self.master.userListLock.release()
-##
-#####
+	    userSort = self.master.getSortedUsers(channel)
+	    idx = userSort.index(user)
+	    self.master.userListLock.acquire()
+	    self.master.userList.delete(idx)
+	    self.master.userListLock.release()
+	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
+	self.master.channels[channel]['userLock'].release()
 
     def chatMessage(self, channel, user, msg, userDisplay=None, userColor=None, userBadges=set(), emotes=[]):
 	if (not self.master.channels.has_key(channel)):
 	    return
+	updateUserList = False
 	if (not self.master.channels[channel].has_key(user)):
-	    self.master.channels[channel][user] = {'display': user}
+	    self.master.channels[channel]['userLock'].acquire()
+	    self.master.channels[channel]['users'][user] = {'display': user}
+	    self.master.channels[channel]['userLock'].release()
+	    updateUserList = True
 	if (not userDisplay):
-	    userDisplay = self.master.channels[channel][user].get('display')
-	self.master.channels[channel][user]['display'] = userDisplay
+	    userDisplay = self.master.channels[channel]['users'][user].get('display')
+	if (self.master.channels[channel]['users'][user]['display'] != userDisplay):
+	    if (channel == self.master.curChannel):
+		self.master.userListLock.acquire()
+		userSort = self.master.getSortedUsers(channel)
+		idx = userSort.index(user)
+		self.master.userList.delete(idx)
+		self.master.userListLock.release()
+	    self.master.channels[channel]['users'][user]['display'] = userDisplay
+	    updateUserList = True
 	if (not userColor):
-	    userColor = self.master.channels[channel][user].get('color')
-	self.master.channels[channel][user]['color'] = userColor
+	    userColor = self.master.channels[channel]['users'][user].get('color')
+	self.master.channels[channel]['users'][user]['color'] = userColor
 #####
 ##
-	#update self.master.channels[channel][user] badges
+	#update self.master.channels[channel]['users'][user] badges
 ##
 #####
 	logLine = (EVENT_MSG, time.time(), user, msg, userDisplay, userColor, userBadges, emotes)
 	self.master.channels[channel]['log'].append(logLine)
 	if (channel != self.master.curChannel):
 	    return
+	if (updateUserList):
+	    self.master.userListLock.acquire()
+	    userSort = self.master.getSortedUsers(channel)
+	    idx = userSort.index(user)
+	    self.master.userList.insert(idx, self.master.channels[channel]['users'][user].get('display', user))
+	    self.master.userListLock.release()
 	if ((userColor) and (not self.master.chatTags.has_key(userColor))):
 	    self.master.chatTags[userColor] = set([channel])
 #####
@@ -305,7 +327,7 @@ class MainGui(Tkinter.Frame):
 ######
 	if (not self.chat):
 	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
-	self.channels[channel] = {'users': {}, 'log': []}
+	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
 	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
@@ -361,13 +383,8 @@ class MainGui(Tkinter.Frame):
 	self.populateChat(self.channels[self.curChannel]['log'])
 	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
-#####
-##
-	#populate self.userList from self.channels[self.curChannel]['users']
-	for user in self.channels[self.curChannel]['users'].keys():
+	for user in self.getSortedUsers(self.curChannel):
 	    self.userList.insert(Tkinter.END, self.channels[self.curChannel]['users'][user].get('display',user))
-##
-######
 	self.userListLock.release()
 
     def channelTabClosed(self, idx):
@@ -457,6 +474,13 @@ class MainGui(Tkinter.Frame):
     #other handlers
 ##
 #####
+
+    def getSortedUsers(self, channel):
+	if ((not channel) or (not self.channels.has_key(channel))):
+	    return
+	users = self.channels[channel]['users'].keys()
+	users.sort(key=lambda u: self.channels[channel]['users'][u].get('display', u).lower())
+	return users
 
     def populateChat(self, log):
 	self.chatBoxLock.acquire()
