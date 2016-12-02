@@ -198,8 +198,21 @@ class MainGui(Tkinter.Frame):
 	#other menus
 	#  ?edit (cut, copy, paste, select all, -, find, preferences...)?
 	#  ?view (show/hide timestamps; show/hide user list)?
-	#  ?favorite channels (add favorite, edit favorites..., -, channel1, channel2, ...)?
-	#  macros (edit macros..., -, macro1, macro2, ...)
+##
+#####
+
+	# favorites menu
+	self.favoritesMen = Tkinter.Menu(self.menuBar, tearoff=False)
+	self.favoritesMen.add_command(label="Add Favorite", command=self.addFavorite)
+	self.favoritesMen.add_command(label="Edit Favorites...", command=self.editFavorites)
+	self.favoritesMen.add_separator()
+	for channel in self.preferences.get('favorites', []):
+	    self.favoritesMen.add_command(label=channel, command=lambda c=channel: self.doChannelOpen(c))
+	self.menuBar.add_cascade(label="Favorites", menu=self.favoritesMen)
+
+#####
+##
+	#macros menu (edit macros..., -, macro1, macro2, ...)
 ##
 #####
 
@@ -252,7 +265,7 @@ class MainGui(Tkinter.Frame):
 	# users pane
 	self.userPane = Tkinter.Frame(self.panes)
 	self.userGrid = Tkinter.Frame(self.userPane)
-	self.userList = Tkinter.Listbox(self.userGrid)
+	self.userList = Tkinter.Listbox(self.userGrid, activestyle="none")
 	self.userList.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.userVScroll = Tkinter.Scrollbar(self.userGrid, command=self.userList.yview)
 	self.userVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
@@ -313,33 +326,7 @@ class MainGui(Tkinter.Frame):
 	self.master.destroy()
 
     def openChannel(self):
-	channel = tkSimpleDialog.askstring("Channel", "Enter channel to join")
-	if (not channel):
-	    return
-#####
-##
-	if (self.channels.has_key(channel)):
-	    #maybe warn about already connected and/or raise channel tab
-	    return
-	#get oauth (logging in if necessary)
-	oauth=base64.b64decode(self.preferences.get('token'))
-##
-######
-	if (not self.chat):
-	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
-	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
-	self.channelOrder.append(channel)
-	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
-	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
-	self.channelTabs.select(len(self.channelOrder) - 1)
-	self.curChannel = channel
-	self.chatBoxLock.acquire()
-	self.chatBox.delete("1.0", Tkinter.END)
-	self.chatBoxLock.release()
-	self.userListLock.acquire()
-	self.userList.delete(0, Tkinter.END)
-	self.userListLock.release()
-	self.chat.join(channel)
+	self.doChannelOpen(tkSimpleDialog.askstring("Channel", "Enter channel to join"))
 
 #####
 ##
@@ -369,6 +356,31 @@ class MainGui(Tkinter.Frame):
 #####
 ##
     #other menu handlers
+##
+#####
+
+    def addFavorite(self):
+	if ((not self.curChannel) or (self.curChannel in self.preferences.get('favorites', []))):
+	    return
+	favorites = self.preferences.get('favorites', [])
+	favorites.append(self.curChannel)
+	favorites.sort(key=lambda c: c.lower())
+	self.preferences['favorites'] = favorites
+	self.preferences.sync()
+	idx = self.preferences['favorites'].index(self.curChannel)
+	cmd = lambda c=self.curChannel: self.doChannelOpen(c)
+	self.favoritesMen.insert_command(idx + 3, label=self.curChannel, command=cmd)
+
+    def editFavorites(self):
+#####
+##
+	pass
+##
+#####
+
+#####
+##
+    #macros menu handlers
 ##
 ######
 
@@ -474,6 +486,34 @@ class MainGui(Tkinter.Frame):
     #other handlers
 ##
 #####
+
+    def doChannelOpen(self, channel):
+	if (not channel):
+	    return
+#####
+##
+	if (self.channels.has_key(channel)):
+	    #maybe warn about already connected and/or raise channel tab
+	    return
+	#get oauth (logging in if necessary)
+	oauth=base64.b64decode(self.preferences.get('token'))
+##
+######
+	if (not self.chat):
+	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
+	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
+	self.channelOrder.append(channel)
+	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
+	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
+	self.channelTabs.select(len(self.channelOrder) - 1)
+	self.curChannel = channel
+	self.chatBoxLock.acquire()
+	self.chatBox.delete("1.0", Tkinter.END)
+	self.chatBoxLock.release()
+	self.userListLock.acquire()
+	self.userList.delete(0, Tkinter.END)
+	self.userListLock.release()
+	self.chat.join(channel)
 
     def getSortedUsers(self, channel):
 	if ((not channel) or (not self.channels.has_key(channel))):
