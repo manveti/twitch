@@ -272,7 +272,7 @@ class Chat:
 					locSplits = loc.split("-")
 					if (len(locSplits) != 2):
 					    continue
-					emotes.append((int(locSplits[0]), int(locSplits[1]), emoteId))
+					emotes.append((int(locSplits[0]), int(locSplits[1]) + 1, emoteId))
 				continue
 		    emotes.sort()
 		    msg = " ".join(params[1:])
