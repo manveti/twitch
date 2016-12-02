@@ -3,7 +3,9 @@
 import base64
 import os.path
 import shelve
+import threading
 import Tkinter
+import tkSimpleDialog
 import time
 import Tix
 import ttk
@@ -17,6 +19,12 @@ DEFAULT_PREFERENCES = {
     'userPaneVisible':		True,
 }
 
+EVENT_MSG = 0
+EVENT_JOIN = 1
+EVENT_LEAVE = 2
+
+CHAT_POPULATE_INTERVAL = 0.1
+
 
 class ChatCallbackFunctions(Twitch.ChatCallbacks):
     def __init__(self, master):
@@ -25,18 +33,21 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
     def userJoined(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
 	    return
-	if (self.master.channels[channel].has_key(user)):
+	if (self.master.channels[channel]['users'].has_key(user)):
+	    return
+	self.master.channels[channel]['users'][user] = {'display': user}
+	self.master.channels[channel]['log'].append((EVENT_JOIN, user))
+	if (channel != self.master.curChannel):
 	    return
 #####
 ##
-	#setup self.master.channels[channel][user]
-	self.master.channels[channel][user] = {'display': user}
-	#if channel isn't active channel: return
 	#figure out where user goes in sorted user list
 	idx=Tkinter.END
 ##
 #####
+	self.master.userListLock.acquire()
 	self.master.userList.insert(idx, user)
+	self.master.userListLock.release()
 
     def usersJoined(self, channel, users):
 	if (not self.master.channels.has_key(channel)):
@@ -51,16 +62,20 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
     def userLeft(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
 	    return
-	if (not self.master.channels[channel].has_key(user)):
+	if (not self.master.channels[channel]['users'].has_key(user)):
 	    return
+	self.master.channels[channel]['log'].append((EVENT_LEAVE, user))
+	if (channel == self.master.curChannel):
 #####
 ##
-	#if channel is active channel:
-	#  figure out user's position in list
-	#  self.userList.delete(idx)
+	    pass
+	    #figure out user's position in list
+	    #self.master.userListLock.acquire()
+	    #self.master.userList.delete(idx)
+	    #self.master.userListLock.release()
 ##
 #####
-	del self.master.channels[channel][user]
+	del self.master.channels[channel]['users'][user]
 
     def chatMessage(self, channel, user, msg, userDisplay=None, userColor=None, userBadges=set(), emotes=[]):
 	if (not self.master.channels.has_key(channel)):
@@ -76,7 +91,12 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 #####
 ##
 	#update self.master.channels[channel][user] badges
-	#add (time.time(), user, msg, userDisplay, userColor, userBadges, emotes) to channel log
+##
+#####
+	logLine = (EVENT_MSG, time.time(), user, msg, userDisplay, userColor, userBadges, emotes)
+	self.master.channels[channel]['log'].append(logLine)
+	if (channel != self.master.curChannel):
+	    return
 	if ((userColor) and (not self.master.chatTags.has_key(userColor))):
 	    self.master.chatTags[userColor] = set([channel])
 #####
@@ -85,12 +105,15 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 ##
 #####
 	    self.master.chatBox.tag_configure(userColor, foreground=userColor)
+	elif (userColor):
+	    self.master.chatTags[userColor].add(channel)
 #####
 ##
 	#(timestamp and general tags should be set up elsewhere, but not coded yet)
 	tsTags=None
 	userTags=userColor #single tag or tuple of tags
 	msgTags=None
+	self.master.chatBoxLock.acquire()
 	#if showing timestamps: self.master.chatBox.insert(Tkinter.END, timestamp_string, tsTags)
 	#deal with badges
 ##
@@ -102,6 +125,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.chatBox.insert(Tkinter.END, ": %s\n" % msg, msgTags)
 ##
 #####
+	self.master.chatBoxLock.release()
 
 
 class MainGui(Tkinter.Frame):
@@ -111,8 +135,11 @@ class MainGui(Tkinter.Frame):
 	self.loadPreferences()
 
 	self.channels = {}
+	self.channelOrder = []
 	self.curChannel = None
 	self.chat = None
+	self.chatToPopulate = []
+	self.chatPopulateThread = None
 	self.chatTags = {}
 #####
 ##
@@ -126,6 +153,9 @@ class MainGui(Tkinter.Frame):
 	#stuff
 ##
 #####
+
+	self.chatBoxLock = threading.Lock()
+	self.userListLock = threading.Lock()
 
 	self.master.title("ChatVeti")
 	self.menuBar = Tkinter.Menu(self)
@@ -159,6 +189,8 @@ class MainGui(Tkinter.Frame):
 	# chat pane
 	self.chatPane = Tkinter.Frame(self.panes)
 	self.channelTabs = Tkx.ClosableNotebook(self.chatPane, height=0)
+	self.channelTabs.bind("<<NotebookTabChanged>>", self.channelTabChanged)
+	self.channelTabs.onClose = self.channelTabClosed
 	self.channelTabs.grid(row=0, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.S))
 	self.userPaneToggle = Tkinter.Button(self.chatPane, text=">", command=self.toggleUserPane)
 	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
@@ -254,6 +286,7 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	#prevent exit and return if necessary
+	self.chatToPopulate = []
 	if(self.chat):self.chat.disconnect()
 ##
 #####
@@ -261,10 +294,11 @@ class MainGui(Tkinter.Frame):
 	self.master.destroy()
 
     def openChannel(self):
+	channel = tkSimpleDialog.askstring("Channel", "Enter channel to join")
+	if (not channel):
+	    return
 #####
 ##
-	#get channel to join
-	channel="manveti" #"twogirls1game"
 	if (self.channels.has_key(channel)):
 	    #maybe warn about already connected and/or raise channel tab
 	    return
@@ -275,16 +309,17 @@ class MainGui(Tkinter.Frame):
 	if (not self.chat):
 	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
 	self.channels[channel] = {'users': {}, 'log': []}
+	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
 	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
-#####
-##
-	#raise tab
-##
-#####
+	self.channelTabs.select(len(self.channelOrder) - 1)
 	self.curChannel = channel
+	self.chatBoxLock.acquire()
 	self.chatBox.delete("1.0", Tkinter.END)
+	self.chatBoxLock.release()
+	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
+	self.userListLock.release()
 	self.chat.join(channel)
 
 #####
@@ -304,25 +339,53 @@ class MainGui(Tkinter.Frame):
 ######
 
     def closeChannel(self):
-	channel = self.curChannel
-	self.chat.leave(channel)
-#####
-##
-	#maybe prompt to confirm leaving without saving log
-	#remove tab
-	#if removing tab doesn't generate a change event:
-	#  figure out which channel's tab is raised now (if any are left)
-	#  switch self.curChannel, self.chatBox, and self.userList over to it
-##
-######
-	del self.channels[channel]
+	if (not self.curChannel):
+	    return
+	try:
+	    idx = self.channelOrder.index(self.curChannel)
+	except ValueError:
+	    return
+	self.channelTabs.forget(idx)
 
 #####
 ##
     #other menu handlers
-    #channelTabs handlers
 ##
 ######
+
+    def channelTabChanged(self, e=None):
+	tabId = self.channelTabs.select()
+	if (not tabId):
+	    return
+	idx = self.channelTabs.index(tabId)
+	if ((idx < 0) or (idx >= len(self.channelOrder)) or (self.channelOrder[idx] == self.curChannel)):
+	    return
+	self.curChannel = self.channelOrder[idx]
+	self.populateChat(self.channels[self.curChannel]['log'])
+	self.userListLock.acquire()
+	self.userList.delete(0, Tkinter.END)
+#####
+##
+	#populate self.userList from self.channels[self.curChannel]['users']
+	for user in self.channels[self.curChannel]['users'].keys():
+	    self.userList.insert(Tkinter.END, self.channels[self.curChannel]['users'][user].get('display',user))
+##
+######
+	self.userListLock.release()
+
+    def channelTabClosed(self, idx):
+	if ((idx < 0) or (idx >= len(self.channelOrder))):
+	    return
+	channel = self.channelOrder[idx]
+#####
+##
+	#maybe prompt to confirm leaving without saving log; return True to abort
+##
+######
+	self.chat.leave(channel)
+	self.channelOrder = self.channelOrder[:idx] + self.channelOrder[idx + 1:]
+	del self.channels[channel]
+	self.curChannel = None
 
     def toggleUserPane(self):
 	if (self.preferences.get('userPaneVisible')):
@@ -379,6 +442,59 @@ class MainGui(Tkinter.Frame):
     #other handlers
 ##
 #####
+
+    def populateChat(self, log):
+	self.chatBoxLock.acquire()
+	self.chatBox.delete("1.0", Tkinter.END)
+#####
+##
+	#populate self.chatBox from the end of channelDict['log'] to the start
+##
+#####
+	self.chatToPopulate = log[:]
+	self.chatBoxLock.release()
+	if (not self.chatPopulateThread):
+	    self.chatPopulateThread = threading.Thread(target=self.populateChatThreadHandler)
+	    self.chatPopulateThread.daemon = True
+	    self.chatPopulateThread.start()
+
+    def populateChatThreadHandler(self):
+	while (True):
+	    if (not self.chatToPopulate):
+		time.sleep(CHAT_POPULATE_INTERVAL)
+		continue
+	    self.chatBoxLock.acquire()
+	    if (not self.chatToPopulate):
+		self.chatBoxLock.release()
+		continue
+	    logLine = self.chatToPopulate.pop()
+	    if (logLine[0] != EVENT_MSG):
+		self.chatBoxLock.release()
+		continue
+	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
+	    if ((userColor) and (not self.chatTags.has_key(userColor))):
+		self.chatTags[userColor] = set([self.curChannel])
+#####
+##
+		#make sure background is reasonable
+##
+#####
+		self.chatBox.tag_configure(userColor, foreground=userColor)
+	    elif (userColor):
+		self.chatTags[userColor].add(self.curChannel)
+#####
+##
+	    tsTags=None
+	    userTags=userColor #single tag or tuple of tags (make sure userColor is valid tag)
+	    msgTags=None
+	    #deal with emotes
+	    self.chatBox.insert("1.0", ": %s\n" % msg, msgTags)
+	    #deal with badges
+	    self.chatBox.insert("1.0", userDisplay, userTags)
+	    #if showing timestamps: self.chatBox.insert("1.0", timestamp_string, tsTags)
+##
+#####
+	    self.chatBoxLock.release()
 
 
 mainWin = MainGui(Tix.Tk())

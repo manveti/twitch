@@ -65,9 +65,12 @@ class ClosableNotebook(ttk.Notebook):
 	idx = self.index("@%d,%d" % (event.x, event.y))
 	if (active != idx):
 	    return
-#####
-##
-	#fire close event (by default: self.forget(idx), but make interruptible)
 	self.forget(idx)
-##
-#####
+
+    def forget(self, idx):
+	if (self.onClose(idx)):
+	    return
+	ttk.Notebook.forget(self, idx)
+
+    def onClose(self, idx):
+	pass
