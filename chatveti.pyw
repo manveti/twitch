@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 
 import base64
+import cPickle
 import os.path
 import shelve
 import threading
 import Tkinter
+import tkFileDialog
 import tkFont
+import tkMessageBox
 import tkSimpleDialog
 import time
 import Tix
@@ -57,7 +60,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.channels[channel]['userLock'].acquire()
 	self.master.channels[channel]['users'][user] = {'display': user}
 	self.master.channels[channel]['userLock'].release()
-	self.master.channels[channel]['log'].append((EVENT_JOIN, user))
+	self.master.channels[channel]['log'].append((EVENT_JOIN, time.time(), user))
 	if (channel != self.master.curChannel):
 	    return
 	userSort = self.master.getSortedUsers(channel)
@@ -74,7 +77,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.channels[channel]['userLock'].acquire()
 	for user in users:
 	    self.master.channels[channel]['users'][user] = {'display': user}
-	    self.master.channels[channel]['log'].append((EVENT_JOIN, user))
+	    self.master.channels[channel]['log'].append((EVENT_JOIN, time.time(), user))
 	self.master.channels[channel]['userLock'].release()
 	if (channel != self.master.curChannel):
 	    return
@@ -89,7 +92,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    return
 	if (not self.master.channels[channel]['users'].has_key(user)):
 	    return
-	self.master.channels[channel]['log'].append((EVENT_LEAVE, user))
+	self.master.channels[channel]['log'].append((EVENT_LEAVE, time.time(), user))
 	if (channel == self.master.curChannel):
 	    userSort = self.master.getSortedUsers(channel)
 	    idx = userSort.index(user)
@@ -434,21 +437,111 @@ class MainGui(Tkinter.Frame):
     def openChannel(self):
 	self.doChannelOpen(tkSimpleDialog.askstring("Channel", "Enter channel to join"))
 
+    def openLog(self):
+	path = tkFileDialog.askopenfilename(filetypes=[("All Files", "*"), ("Log Files", "*.log")])
+	if (not path):
+	    return
+	f = None
+	try:
+	    try:
+		f = open(path, "rb")
+	    except IOError:
+		tkMessageBox.showerror("Error", "Unable to open file.")
+		return
+	    channelName = f.readline().strip()
+	    if (not channelName):
+		tkMessageBox.showerror("Error", "Unable to load file.")
+		return
+	    try:
+		log = cPickle.load(f)
+	    except cPickle.PickleError:
+		tkMessageBox.showerror("Error", "Unable to load file.")
+		return
+	finally:
+	    if (f):
+		f.close()
+	if (not log):
+	    tkMessageBox.showerror("Error", "Unable to load file.")
+	    return
+	channelDict = {'logPath': path, 'channelName': channelName, 'log': log, 'users': {}}
 #####
 ##
-    def openLog(self):
-	pass
-
-    def saveLog(self):
-	pass
-
-    def saveLogAs(self):
-	pass
-
-    def exportLog(self):
-	pass
+	#channel=something to identify tab as a log of channel channelName from date log[0][1]
+	channel = "%s_%s" % (channelName, time.strftime("%y%m%d_%H%M%S", time.localtime(log[0][1])))
+	#verify channel is unique
+	if (self.channels.has_key(channel)):
+	    #raise channel tab
+	    return
 ##
 ######
+	self.channels[channel] = channelDict
+	self.channelOrder.append(channel)
+	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
+	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
+	self.channelTabs.select(len(self.channelOrder) - 1)
+	self.curChannel = channel
+	self.userListLock.acquire()
+	self.userList.delete(0, Tkinter.END)
+	self.userListLock.release()
+	self.populateChat(log)
+
+    def saveLog(self):
+	if ((not self.curChannel) or (not self.channels.get(self.curChannel, {}).get('log'))):
+	    return
+	if (not self.channels[self.curChannel].get('logPath')):
+	    return self.saveLogAs()
+	channelName = self.channels[self.curChannel].get('channelName', self.curChannel)
+	f = None
+	try:
+	    f = open(self.channels[self.curChannel]['logPath'], "wb")
+	    f.write("%s\n" % channelName)
+	    cPickle.dump(self.channels[self.curChannel]['log'], f)
+	finally:
+	    if (f):
+		f.close()
+
+    def saveLogAs(self):
+	if ((not self.curChannel) or (not self.channels.get(self.curChannel, {}).get('log'))):
+	    return
+	startTime = time.localtime(self.channels[self.curChannel]['log'][0][1])
+	channelName = self.channels[self.curChannel].get('channelName', self.curChannel)
+	args = {
+	    'filetypes': [("All Files", "*"), ("Log Files", "*.log")],
+	    'initialfile': "%s_%s.log" % (channelName, time.strftime("%y%m%d_%H%M%S", startTime))
+	}
+	path = tkFileDialog.asksaveasfilename(**args)
+	if (not path):
+	    return
+	self.channels[self.curChannel]['logPath'] = path
+	self.saveLog()
+
+    def exportLog(self):
+	if ((not self.curChannel) or (not self.channels.get(self.curChannel, {}).get('log'))):
+	    return
+	startTime = time.localtime(self.channels[self.curChannel]['log'][0][1])
+	channelName = self.channels[self.curChannel].get('channelName', self.curChannel)
+	args = {
+	    'filetypes': [("All Files", "*"), ("Text Files", "*.txt")],
+	    'initialfile': "%s_%s.txt" % (channelName, time.strftime("%y%m%d_%H%M%S", startTime))
+	}
+	path = tkFileDialog.asksaveasfilename(**args)
+	if (not path):
+	    return
+	f = None
+	try:
+	    f = open(path, "w")
+	    for logLine in self.channels[self.curChannel]['log']:
+		if (logLine[0] != EVENT_MSG):
+		    continue
+		(e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
+#####
+##
+		f.write("%s %s: %s\n" % (time.strftime("%H:%M:%S", time.localtime(ts)), userDisplay, msg))
+##
+######
+	finally:
+	    if (f):
+		f.close()
 
     def closeChannel(self):
 	if (not self.curChannel):

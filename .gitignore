@@ -1,3 +1,4 @@
 stuff.txt
 *.config
 *.pyc
+*.log
