@@ -5,6 +5,7 @@ import os.path
 import shelve
 import threading
 import Tkinter
+import tkFont
 import tkSimpleDialog
 import time
 import Tix
@@ -153,14 +154,24 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.chatBox.tag_configure(userColor, **kwargs)
 	elif (userColor):
 	    self.master.chatTags[userColor].add(channel)
-#####
-##
-	#(timestamp and general tags should be set up elsewhere, but not coded yet)
-	tsTags=None
-	userTags=userColor #single tag or tuple of tags
-	msgTags=None
+	tsTags = []
+	userTags = [userColor]
+	msgTags = []
+	if (self.master.useTsTag):
+	    tsTags.append("tsColor")
+	if (self.master.useMsgTag):
+	    msgTags.append("msgColor")
+	if (self.master.useFontTag):
+	    tsTags.append("msgFont")
+	    userTags.append("msgFont")
+	    msgTags.append("msgFont")
+	tsTags = tuple(tsTags) or None
+	userTags = tuple(userTags) or None
+	msgTags = tuple(msgTags) or None
 	self.master.chatBoxLock.acquire()
 	oldPos = self.master.chatBox.yview()
+#####
+##
 	#if showing timestamps: self.master.chatBox.insert(Tkinter.END, timestamp_string, tsTags)
 	#deal with badges
 ##
@@ -190,6 +201,10 @@ class MainGui(Tkinter.Frame):
 	self.chatToPopulate = []
 	self.chatPopulateThread = None
 	self.chatTags = {}
+	self.useTsTag = False
+	self.useMsgTag = False
+	self.useFontTag = False
+	self.msgFont = None
 	self.searchString = None
 	self.lastSearchString = ""
 	self.searchBackwards = False
@@ -256,11 +271,16 @@ class MainGui(Tkinter.Frame):
 	self.userPaneToggle = Tkinter.Button(self.chatPane, text=">", command=self.toggleUserPane)
 	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
 	self.chatGrid = Tkinter.Frame(self.chatPane)
+	kwargs = {}
+	if (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
 	if (self.preferences.get('wrapChatText')):
-	    wrap = Tkinter.WORD
+	    kwargs['wrap'] = Tkinter.WORD
 	else:
-	    wrap = Tkinter.NONE
-	self.chatBox = Tkinter.Text(self.chatGrid, wrap=wrap)
+	    kwargs['wrap'] = Tkinter.NONE
+	self.chatBox = Tkinter.Text(self.chatGrid, **kwargs)
 	self.chatBox.bind("<Control-c>", self.copyChat)
 	self.chatBox.bind("<Control-f>", self.startChatSearch)
 	self.chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
@@ -282,7 +302,12 @@ class MainGui(Tkinter.Frame):
 	self.scratchMen.add_separator()
 	self.scratchBut.config(menu=self.scratchMen)
 	self.scratchBut.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
-	self.chatInputBox = Tkinter.Entry(self.chatPane)
+	kwargs = {}
+	if (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	self.chatInputBox = Tkinter.Entry(self.chatPane, **kwargs)
 	self.chatInputBox.bind("<Return>", self.submitChatInput)
 	self.chatInputBox.bind("<Up>", self.inputUpHistory)
 	self.chatInputBox.bind("<Down>", self.inputDownHistory)
@@ -300,7 +325,16 @@ class MainGui(Tkinter.Frame):
 	# users pane
 	self.userPane = Tkinter.Frame(self.panes)
 	self.userGrid = Tkinter.Frame(self.userPane)
-	self.userList = Tkinter.Listbox(self.userGrid, activestyle="none")
+	kwargs = {'activestyle': "none"}
+	if (self.preferences.get('userColor')):
+	    kwargs['foreground'] = self.preferences.get('userColor')
+	elif (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('userBgColor')):
+	    kwargs['background'] = self.preferences.get('userBgColor')
+	elif (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	self.userList = Tkinter.Listbox(self.userGrid, **kwargs)
 	self.userList.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.userVScroll = Tkinter.Scrollbar(self.userGrid, command=self.userList.yview)
 	self.userVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
@@ -332,11 +366,44 @@ class MainGui(Tkinter.Frame):
 	self.rowconfigure(0, weight=1)
 	self.pack(fill="both", expand=True)
 
-#####
-##
-	#configure self.chatBox timestamp and message tags
-##
-#####
+	# configure global text tags
+	kwargs = {}
+	if (self.preferences.get('timestampColor')):
+	    kwargs['foreground'] = self.preferences.get('timestampColor')
+	elif (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('timestampBgColor')):
+	    kwargs['background'] = self.preferences.get('timestampBgColor')
+	elif (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	if (kwargs):
+	    self.chatBox.tag_configure("tsColor", **kwargs)
+	    self.useTsTag = True
+	kwargs = {}
+	if (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	if (kwargs):
+	    self.chatBox.tag_configure("msgColor", **kwargs)
+	    self.useMsgTag = True
+	kwargs = {}
+	if (self.preferences.get('chatFontFamily')):
+	    kwargs['family'] = self.preferences.get('chatFontFamily')
+	if (self.preferences.get('chatFontSize')):
+	    kwargs['size'] = self.preferences.get('chatFontSize')
+	if (self.preferences.get('chatFontBold')):
+	    kwargs['weight'] = "bold"
+	if (self.preferences.get('chatFontItalic')):
+	    kwargs['slant'] = "italic"
+	if (kwargs):
+	    defaultAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	    for kw in ['family', 'weight', 'slant', 'overstrike', 'underline', 'size']:
+		if ((not kwargs.has_key(kw)) and (defaultAttrs.has_key(kw))):
+		    kwargs[kw] = defaultAttrs[kw]
+	    self.msgFont = tkFont.Font(**kwargs)
+	    self.chatBox.tag_configure("msgFont", font=self.msgFont)
+	    self.useFontTag = True
 
 	self.master.protocol("WM_DELETE_WINDOW", self.interceptExit)
 
@@ -354,11 +421,13 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	#prevent exit and return if necessary
-	self.chatToPopulate = []
-	self.chat.callbacks = Twitch.ChatCallbacks()
-	if(self.chat):self.chat.disconnect()
 ##
 #####
+	self.chatToPopulate = []
+	if (self.chat):
+	    if (self.chat.callbacks):
+		self.chat.callbacks = Twitch.ChatCallbacks()
+	    self.chat.disconnect()
 	self.preferences.close()
 	self.master.destroy()
 
@@ -695,11 +764,22 @@ class MainGui(Tkinter.Frame):
 		self.chatBox.tag_configure(userColor, **kwargs)
 	    elif (userColor):
 		self.chatTags[userColor].add(self.curChannel)
+	    tsTags = []
+	    userTags = [userColor]
+	    msgTags = []
+	    if (self.useTsTag):
+		tsTags.append("tsColor")
+	    if (self.useMsgTag):
+		msgTags.append("msgColor")
+	    if (self.useFontTag):
+		tsTags.append("msgFont")
+		userTags.append("msgFont")
+		msgTags.append("msgFont")
+	    tsTags = tuple(tsTags) or None
+	    userTags = tuple(userTags) or None
+	    msgTags = tuple(msgTags) or None
 #####
 ##
-	    tsTags=None
-	    userTags=userColor #single tag or tuple of tags (make sure userColor is valid tag)
-	    msgTags=None
 	    #deal with emotes
 	    self.chatBox.insert("1.0", ": %s\n" % msg, msgTags)
 	    #deal with badges
