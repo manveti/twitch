@@ -22,6 +22,8 @@ DEFAULT_PREFERENCES = {
     'brightnessThreshold':	80,
     'maxInputHistory':		100,
     'maxScratchWidth':		50,
+    'showTimestamps':		True,
+    'timestampFormat':		"%H:%M",
     'userPaneVisible':		True,
     'wrapChatText':		True,
 }
@@ -131,7 +133,8 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	#update self.master.channels[channel]['users'][user] badges
 ##
 #####
-	logLine = (EVENT_MSG, time.time(), user, msg, userDisplay, userColor, userBadges, emotes)
+	ts = time.time()
+	logLine = (EVENT_MSG, ts, user, msg, userDisplay, userColor, userBadges, emotes)
 	self.master.channels[channel]['log'].append(logLine)
 	if (channel != self.master.curChannel):
 	    return
@@ -173,9 +176,11 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	msgTags = tuple(msgTags)
 	self.master.chatBoxLock.acquire()
 	oldPos = self.master.chatBox.yview()
+	if (self.master.preferences.get('showTimestamps')):
+	    tsFmt = self.master.preferences.get('timestampFormat', DEFAULT_PREFERENCES['timestampFormat'])
+	    self.master.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
 #####
 ##
-	#if showing timestamps: self.master.chatBox.insert(Tkinter.END, timestamp_string, tsTags)
 	#deal with badges
 ##
 #####
@@ -183,6 +188,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 #####
 ##
 	#deal with emotes
+	#deal with ACTIONs
 	self.master.chatBox.insert(Tkinter.END, ": %s\n" % msg, msgTags)
 ##
 #####
@@ -876,10 +882,13 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	    #deal with emotes
+	    #deal with ACTIONs
 	    self.chatBox.insert("1.0", ": %s\n" % msg, msgTags)
 	    #deal with badges
 	    self.chatBox.insert("1.0", userDisplay, userTags)
-	    #if showing timestamps: self.chatBox.insert("1.0", timestamp_string, tsTags)
+	    if (self.preferences.get('showTimestamps')):
+		tsFmt = self.preferences.get('timestampFormat', DEFAULT_PREFERENCES['timestampFormat'])
+		self.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
 ##
 #####
 	    self.chatBoxLock.release()
