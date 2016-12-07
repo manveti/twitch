@@ -115,7 +115,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	if (not userDisplay):
 	    userDisplay = self.master.channels[channel]['users'][user].get('display')
 	if (self.master.channels[channel]['users'][user]['display'] != userDisplay):
-	    if (channel == self.master.curChannel):
+	    if ((channel == self.master.curChannel) and (not updateUserList)):
 		self.master.userListLock.acquire()
 		userSort = self.master.getSortedUsers(channel)
 		idx = userSort.index(user)
@@ -168,9 +168,9 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    tsTags.append("msgFont")
 	    userTags.append("msgFont")
 	    msgTags.append("msgFont")
-	tsTags = tuple(tsTags) or None
-	userTags = tuple(userTags) or None
-	msgTags = tuple(msgTags) or None
+	tsTags = tuple(tsTags)
+	userTags = tuple(userTags)
+	msgTags = tuple(msgTags)
 	self.master.chatBoxLock.acquire()
 	oldPos = self.master.chatBox.yview()
 #####
@@ -594,8 +594,10 @@ class MainGui(Tkinter.Frame):
 	self.populateChat(self.channels[self.curChannel]['log'])
 	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
+	self.channels[self.curChannel]['userLock'].acquire()
 	for user in self.getSortedUsers(self.curChannel):
 	    self.userList.insert(Tkinter.END, self.channels[self.curChannel]['users'][user].get('display',user))
+	self.channels[self.curChannel]['userLock'].release()
 	self.userListLock.release()
 
     def channelTabClosed(self, idx):
@@ -868,9 +870,9 @@ class MainGui(Tkinter.Frame):
 		tsTags.append("msgFont")
 		userTags.append("msgFont")
 		msgTags.append("msgFont")
-	    tsTags = tuple(tsTags) or None
-	    userTags = tuple(userTags) or None
-	    msgTags = tuple(msgTags) or None
+	    tsTags = tuple(tsTags)
+	    userTags = tuple(userTags)
+	    msgTags = tuple(msgTags)
 #####
 ##
 	    #deal with emotes
