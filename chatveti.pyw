@@ -20,6 +20,7 @@ import Twitch
 
 DEFAULT_PREFERENCES = {
     'brightnessThreshold':	80,
+    'latinThreshold':		1,
     'maxInputHistory':		100,
     'maxScratchWidth':		50,
     'showTimestamps':		True,
@@ -168,7 +169,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.chatBoxLock.acquire()
 	oldPos = self.master.chatBox.yview()
 	if (self.master.preferences.get('showTimestamps')):
-	    tsFmt = self.master.preferences.get('timestampFormat', DEFAULT_PREFERENCES['timestampFormat'])
+	    tsFmt = self.master.getPreference('timestampFormat')
 	    self.master.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
 #####
 ##
@@ -690,7 +691,7 @@ class MainGui(Tkinter.Frame):
 	if ((not s) or (s in self.scratchMsgs)):
 	    return
 	self.scratchMsgs.append(s)
-	maxWidth = self.preferences.get('maxScratchWidth', DEFAULT_PREFERENCES['maxScratchWidth'])
+	maxWidth = self.getPreference('maxScratchWidth')
 	if (len(s) <= maxWidth):
 	    shortS = s
 	else:
@@ -748,6 +749,9 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 
+    def getPreference(self, pref, default=None):
+	return self.preferences.get(pref, DEFAULT_PREFERENCES.get(pref, default))
+
     def doChannelOpen(self, channel):
 	if (not channel):
 	    return
@@ -761,7 +765,8 @@ class MainGui(Tkinter.Frame):
 ##
 ######
 	if (not self.chat):
-	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth)
+	    latinThresh = self.getPreference('latinThreshold')
+	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth, latinThresh)
 	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
@@ -784,7 +789,7 @@ class MainGui(Tkinter.Frame):
 	return users
 
     def adjustColor(self, c, ref):
-	threshold = self.preferences.get('brightnessThreshold', DEFAULT_PREFERENCES['brightnessThreshold'])
+	threshold = self.getPreference('brightnessThreshold')
 	cBr = getColorBrightness(c)
 	rBr = getColorBrightness(ref)
 	if (abs(cBr - rBr) >= threshold):
@@ -879,7 +884,7 @@ class MainGui(Tkinter.Frame):
 	    #deal with badges
 	    self.chatBox.insert("1.0", userDisplay, userTags)
 	    if (self.preferences.get('showTimestamps')):
-		tsFmt = self.preferences.get('timestampFormat', DEFAULT_PREFERENCES['timestampFormat'])
+		tsFmt = self.getPreference('timestampFormat')
 		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
 ##
 #####
