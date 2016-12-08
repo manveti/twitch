@@ -144,25 +144,13 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    idx = userSort.index(user)
 	    self.master.userList.insert(idx, self.master.channels[channel]['users'][user].get('display', user))
 	    self.master.userListLock.release()
-	if ((userColor) and (not self.master.chatTags.has_key(userColor))):
-	    self.master.chatTags[userColor] = set([channel])
-	    kwargs = {'foreground': userColor}
-	    bgColor = self.master.preferences.get('chatBgColor')
-	    needBg = True
-	    if (not bgColor):
-		bgColor = self.master.translateColor(self.master.chatBox.cget('bg'))
-		needBg = False
-	    adjustedBg = self.master.adjustHexColor(bgColor, userColor)
-	    if (adjustedBg != bgColor):
-		needBg = True
-	    if (needBg):
-		kwargs['background'] = adjustedBg
-	    self.master.chatBox.tag_configure(userColor, **kwargs)
-	elif (userColor):
-	    self.master.chatTags[userColor].add(channel)
+	if (userColor):
+	    self.master.setupTag(channel, userColor)
 	tsTags = []
-	userTags = [userColor]
+	userTags = []
 	msgTags = []
+	if (userColor):
+	    userTags.append(userColor)
 	if (self.master.useTsTag):
 	    tsTags.append("tsColor")
 	if (self.master.useMsgTag):
@@ -626,6 +614,7 @@ class MainGui(Tkinter.Frame):
 	    self.userListLock.acquire()
 	    self.userList.delete(0, Tkinter.END)
 	    self.userListLock.release()
+	self.removeTags(channel)
 
     def toggleUserPane(self):
 	if (self.preferences.get('userPaneVisible')):
@@ -849,25 +838,13 @@ class MainGui(Tkinter.Frame):
 		self.chatBoxLock.release()
 		continue
 	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
-	    if ((userColor) and (not self.chatTags.has_key(userColor))):
-		self.chatTags[userColor] = set([self.curChannel])
-		kwargs = {'foreground': userColor}
-		bgColor = self.preferences.get('chatBgColor')
-		needBg = True
-		if (not bgColor):
-		    needBg = False
-		    bgColor = self.translateColor(self.chatBox.cget('bg'))
-		adjustedBg = self.adjustHexColor(bgColor, userColor)
-		if (adjustedBg != bgColor):
-		    needBg = True
-		if (needBg):
-		    kwargs['background'] = adjustedBg
-		self.chatBox.tag_configure(userColor, **kwargs)
-	    elif (userColor):
-		self.chatTags[userColor].add(self.curChannel)
+	    if (userColor):
+		self.setupTag(self.curChannel, userColor)
 	    tsTags = []
-	    userTags = [userColor]
+	    userTags = []
 	    msgTags = []
+	    if (userColor):
+		userTags.append(userColor)
 	    if (self.useTsTag):
 		tsTags.append("tsColor")
 	    if (self.useMsgTag):
@@ -912,6 +889,34 @@ class MainGui(Tkinter.Frame):
 	    self.chatBox.tag_add(Tkinter.SEL, Tkinter.SEL_FIRST, Tkinter.SEL_LAST)
 	    self.chatBox.mark_set(Tkinter.INSERT, pos)
 	    self.chatBox.see(pos)
+
+    def setupTag(self, channel, color):
+	if (not color):
+	    return
+	if (self.chatTags.has_key(color)):
+	    self.chatTags[color].add(channel)
+	    return
+	self.chatTags[color] = set([color])
+	kwargs = {'foreground': color}
+	bgColor = self.preferences.get('chatBgColor')
+	needBg = True
+	if (not bgColor):
+	    needBg = False
+	    bgColor = self.translateColor(self.chatBox.cget('bg'))
+	adjustedBg = self.adjustHexColor(bgColor, color)
+	if (adjustedBg != bgColor):
+	    needBg = True
+	if (needBg):
+	    kwargs['background'] = adjustedBg
+	self.chatBox.tag_configure(color, **kwargs)
+
+    def removeTags(self, channel):
+	for color in self.chatTags.keys():
+	    if (channel not in self.chatTags[color]):
+		continue
+	    self.chatTags[color].remove(channel)
+	    if (not self.chatTags[color]):
+		self.chatBox.tag_delete(color)
 
 
 mainWin = MainGui(Tix.Tk())
