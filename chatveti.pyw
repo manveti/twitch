@@ -225,6 +225,9 @@ class MainGui(Tkinter.Frame):
 	self.chatBoxLock = threading.Lock()
 	self.userListLock = threading.Lock()
 
+	self.accountWin = None
+	self.preferencesWin = None
+
 	self.master.title("ChatVeti")
 	self.menuBar = Tkinter.Menu(self)
 	master.config(menu=self.menuBar)
@@ -242,12 +245,24 @@ class MainGui(Tkinter.Frame):
 	self.fileMen.add_command(label="Exit", command=self.interceptExit)
 	self.menuBar.add_cascade(label="File", menu=self.fileMen)
 
-#####
-##
-	#other menus
-	#  config (account...; show/hide timestamps; ?show/hide user list?; preferences...)
-##
-#####
+	# config menu
+	self.configMen = Tkinter.Menu(self.menuBar, tearoff=False)
+	self.configTimestampVar = Tkinter.IntVar()
+	self.configTimestampVar.set(int(self.getPreference('showTimestamps')))
+	self.configMen.add_checkbutton(label="Chat Timestamps", variable=self.configTimestampVar, indicatoron=True,
+					onvalue=1, offvalue=0, command=self.toggleChatTimestamps)
+	self.configWrapVar = Tkinter.IntVar()
+	self.configWrapVar.set(int(self.getPreference('wrapChatText')))
+	self.configMen.add_checkbutton(label="Wrap Chat", variable=self.configWrapVar, indicatoron=True,
+					onvalue=1, offvalue=0, command=self.toggleChatWrap)
+	self.configUserVar = Tkinter.IntVar()
+	self.configUserVar.set(int(self.getPreference('userPaneVisible')))
+	self.configMen.add_checkbutton(label="User Pane", variable=self.configUserVar, indicatoron=True,
+					onvalue=1, offvalue=0, command=self.toggleUserPane)
+	self.configMen.add_separator()
+	self.configMen.add_command(label="Account...", command=self.openAccountWin)
+	self.configMen.add_command(label="Preferences...", command=self.openPreferencesWin)
+	self.menuBar.add_cascade(label="Config", menu=self.configMen)
 
 	# favorites menu
 	self.favoritesMen = Tkinter.Menu(self.menuBar, tearoff=False)
@@ -553,11 +568,87 @@ class MainGui(Tkinter.Frame):
 	    return
 	self.channelTabs.forget(idx)
 
+    def toggleChatTimestamps(self):
+	self.preferences['showTimestamps'] = not self.getPreference('showTimestamps')
+	self.configTimestampVar.set(int(self.preferences['showTimestamps']))
+	self.savePreferences()
+	if (self.curChannel):
+	    self.populateChat(self.channels[self.curChannel]['log'])
+
+    def toggleChatWrap(self):
+	self.preferences['wrapChatText'] = not self.getPreference('wrapChatText')
+	self.configWrapVar.set(int(self.preferences['wrapChatText']))
+	self.savePreferences()
+	if (self.curChannel):
+	    self.populateChat(self.channels[self.curChannel]['log'])
+
+    def toggleUserPane(self):
+	w = self.master.winfo_width()
+	h = self.master.winfo_height()
+	x = self.master.winfo_x()
+	y = self.master.winfo_y()
+	if (self.preferences.get('userPaneVisible')):
+	    self.panes.remove(self.userPane)
+	    self.userPaneToggle.configure(text="<")
+	    self.preferences['userPaneVisible'] = False
+	    self.configUserVar.set(0)
+	else:
+	    self.panes.add(self.userPane, stretch="always")
+	    self.userPaneToggle.configure(text=">")
+	    self.preferences['userPaneVisible'] = True
+	    self.configUserVar.set(1)
+	self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
+	self.savePreferences()
+
+    def openAccountWin(self):
+	if (not self.accountWin):
+	    def closeAccountWin():
+		self.accountWin.withdraw()
+	    self.accountWin = Tkinter.Toplevel()
+	    self.accountWin.protocol("WM_DELETE_WINDOW", closeAccountWin)
+	    self.accountWin.title("Account")
 #####
 ##
-    #other menu handlers
+	    #login stuff:
+	    #account name (read-only)
+	    #permissions (for admin features, not yet added)
+	    #login button
 ##
 #####
+	self.accountWin.state(newstate="normal")
+
+    def openPreferencesWin(self):
+	if (not self.preferencesWin):
+	    def closePreferencesWin():
+		self.preferencesWin.withdraw()
+	    self.preferencesWin = Tkinter.Toplevel()
+	    self.preferencesWin.protocol("WM_DELETE_WINDOW", closePreferencesWin)
+	    self.preferencesWin.title("Preferences")
+#####
+##
+	    #preferences stuff:
+	    #'brightnessThreshold':	int 0..127
+	    #'latinThreshold':		float 0..1
+	    #'maxInputHistory':		int
+	    #'maxScratchWidth':		int
+	    #'showTimestamps':		bool
+	    #'timestampFormat':		str (python strptime format)
+	    #'userPaneVisible':		bool
+	    #'wrapChatText':		bool
+	    #'userPaneVisible':		bool
+	    #'chatColor':		str ("#%02x%02x%02x") (chat foreground)
+	    #'chatBgColor':		str ("#%02x%02x%02x") (chat background)
+	    #'timestampColor':		str ("#%02x%02x%02x") (chat timestamp foreground)
+	    #'timestampBgColor':	str ("#%02x%02x%02x") (chat timestamp background)
+	    #'chatFontFamily':		str
+	    #'chatFontSize':		int
+	    #'chatFontBold':		bool
+	    #'chatFontItalic':		bool
+	    #'userColor':		str ("#%02x%02x%02x") (user list foreground)
+	    #'userBgColor':		str ("#%02x%02x%02x") (user list background)
+##
+#####
+	self.preferencesWin.state(newstate="normal")
 
     def addFavorite(self):
 	if ((not self.curChannel) or (self.curChannel in self.preferences.get('favorites', []))):
@@ -622,22 +713,6 @@ class MainGui(Tkinter.Frame):
 	    self.userList.delete(0, Tkinter.END)
 	    self.userListLock.release()
 	self.removeTags(channel)
-
-    def toggleUserPane(self):
-	w = self.master.winfo_width()
-	h = self.master.winfo_height()
-	x = self.master.winfo_x()
-	y = self.master.winfo_y()
-	if (self.preferences.get('userPaneVisible')):
-	    self.panes.remove(self.userPane)
-	    self.userPaneToggle.configure(text="<")
-	    self.preferences['userPaneVisible'] = False
-	else:
-	    self.panes.add(self.userPane, stretch="always")
-	    self.userPaneToggle.configure(text=">")
-	    self.preferences['userPaneVisible'] = True
-	self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
-	self.savePreferences()
 
     def copyChat(self, e):
 	self.chatBox.clipboard_clear()
