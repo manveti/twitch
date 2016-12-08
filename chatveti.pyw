@@ -237,8 +237,7 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	#other menus
-	#  ?edit (cut, copy, paste, select all, -, find, preferences...)?
-	#  ?view (show/hide timestamps; show/hide user list)?
+	#  config (account...; show/hide timestamps; ?show/hide user list?; preferences...)
 ##
 #####
 
@@ -617,6 +616,10 @@ class MainGui(Tkinter.Frame):
 	self.removeTags(channel)
 
     def toggleUserPane(self):
+	w = self.master.winfo_width()
+	h = self.master.winfo_height()
+	x = self.master.winfo_x()
+	y = self.master.winfo_y()
 	if (self.preferences.get('userPaneVisible')):
 	    self.panes.remove(self.userPane)
 	    self.userPaneToggle.configure(text="<")
@@ -625,6 +628,7 @@ class MainGui(Tkinter.Frame):
 	    self.panes.add(self.userPane, stretch="always")
 	    self.userPaneToggle.configure(text=">")
 	    self.preferences['userPaneVisible'] = True
+	self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
 	self.savePreferences()
 
     def copyChat(self, e):
