@@ -880,7 +880,7 @@ class MainGui(Tkinter.Frame):
 	    self.chatBox.insert("1.0", userDisplay, userTags)
 	    if (self.preferences.get('showTimestamps')):
 		tsFmt = self.preferences.get('timestampFormat', DEFAULT_PREFERENCES['timestampFormat'])
-		self.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
 ##
 #####
 	    self.chatBoxLock.release()

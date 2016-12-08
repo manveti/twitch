@@ -4,6 +4,7 @@ import select
 import socket
 import ssl
 import threading
+import unicodedata
 import urllib
 import webbrowser
 
@@ -178,12 +179,13 @@ class ChatCallbacks:
 	pass
 
 class Chat:
-    def __init__(self, callbacks, oauth=None):
+    def __init__(self, callbacks, oauth=None, latinThresh=1):
 	if (not oauth):
 	    oauth = getOauth()
 
 	self.callbacks = callbacks
 	self.oauth = oauth
+	self.latinThresh = latinThresh
 
 	userInfo = getApi("/user", self.oauth)
 	self.userName = userInfo.get('name')
@@ -225,6 +227,16 @@ class Chat:
 	def unescapeTags(s):
 	    s = s.replace("\\:", ";").replace("\\s", " ").replace("\\\\", "\\")
 	    return s.replace("\\r", "\r").replace("\\n", "\n")
+	charDict = {}
+	def charIsLatin(c):
+	    if (not c.isalpha()):
+		return True
+	    if (not charDict.has_key(c)):
+		charDict[c] = unicodedata.name(c, "").startswith("LATIN")
+	    return charDict[c]
+	def isLatin(s):
+	    s = unicode(s)
+	    return sum(1 for c in s if charIsLatin(c)) * self.latinThresh >= len(s)
 	while (self.running):
 	    if (not select.select([self.socket], [], [], READ_INTERVAL)[0]):
 		continue
@@ -274,6 +286,8 @@ class Chat:
 					    continue
 					emotes.append((int(locSplits[0]), int(locSplits[1]) + 1, emoteId))
 				continue
+		    if (not isLatin(display)):
+			display = "%s (%s)" % (display, user)
 		    emotes.sort()
 		    msg = " ".join(params[1:])
 		    self.callbacks.chatMessage(channel, user, msg, display, color, badges, emotes)
