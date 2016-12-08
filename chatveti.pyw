@@ -32,6 +32,9 @@ EVENT_MSG = 0
 EVENT_JOIN = 1
 EVENT_LEAVE = 2
 
+ACTION_PREFIX = "%cACTION " % 1
+ACTION_SUFFIX = "%c" % 1
+
 CHAT_POPULATE_INTERVAL = 0.1
 
 
@@ -176,8 +179,12 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 #####
 ##
 	#deal with emotes
-	#deal with ACTIONs
-	self.master.chatBox.insert(Tkinter.END, ": %s\n" % msg, msgTags)
+	if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+	    msgTags = userTags
+	    msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	else:
+	    msg = ": %s\n" % msg
+	self.master.chatBox.insert(Tkinter.END, msg, msgTags)
 ##
 #####
 	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
@@ -863,8 +870,12 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 	    #deal with emotes
-	    #deal with ACTIONs
-	    self.chatBox.insert("1.0", ": %s\n" % msg, msgTags)
+	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+		msgTags = userTags
+		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	    else:
+		msg = ": %s\n" % msg
+	    self.chatBox.insert("1.0", msg, msgTags)
 	    #deal with badges
 	    self.chatBox.insert("1.0", userDisplay, userTags)
 	    if (self.preferences.get('showTimestamps')):

@@ -320,6 +320,8 @@ class Chat:
 		    if (not self.channels[channel]['pending']):
 			continue
 		    msg = self.channels[channel]['pending'].pop(0)
+		    if (msg.startswith("/me ")):
+			msg = "%cACTION %s%c" % (1, msg[4:], 1)
 		    display = self.channels[channel].get('display', self.displayName)
 		    color = self.channels[channel].get('color')
 		    badges = self.channels[channel].get('badges')
