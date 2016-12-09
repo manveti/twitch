@@ -573,6 +573,12 @@ class MainGui(Tkinter.Frame):
 	self.preferences['wrapChatText'] = not self.getPreference('wrapChatText')
 	self.configWrapVar.set(int(self.preferences['wrapChatText']))
 	self.savePreferences()
+	if (self.preferences['wrapChatText']):
+	    wrap = Tkinter.WORD
+	else:
+	    wrap = Tkinter.NONE
+	self.chatBox.config(wrap=wrap)
+
 	if (self.curChannel):
 	    self.populateChat(self.channels[self.curChannel]['log'])
 
@@ -619,6 +625,7 @@ class MainGui(Tkinter.Frame):
 	    self.preferencesWin.title("Preferences")
 	    self.prefTabs = Tix.NoteBook(self.preferencesWin)
 	    self.prefTabs.grid(row=0, column=0, columnspan=4, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    # font & colors tab
 	    self.prefTabs.add("fntClrTab", label="Font & Colors")
 	    fntClrTab = self.prefTabs.fntClrTab
 	    self.prefChatGrp = Tkinter.LabelFrame(fntClrTab, text="Chat Colors")
@@ -701,18 +708,35 @@ class MainGui(Tkinter.Frame):
 						    integer=True, min=0, max=128, autorepeat=False)
 	    self.prefBrightThreshBox.grid(row=0, column=1, sticky=Tkinter.W)
 	    self.prefBrightGrp.grid(row=2, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
-#####
-##
-	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
-	    #user list:
-	    #'userColor':		str ("#%02x%02x%02x") (user list foreground)
-	    #'userBgColor':		str ("#%02x%02x%02x") (user list background)
-##
-#####
+	    self.prefUserGrp = Tkinter.LabelFrame(fntClrTab, text="User List Colors")
+	    self.prefUserColorLbl = Tkinter.Label(self.prefUserGrp, text="Foreground:")
+	    self.prefUserColorLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefUserColorEx = Tkinter.Label(self.prefUserGrp, text="   ")
+	    self.prefUserColorEx.grid(row=0, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefUserColorBut = Tkinter.Button(self.prefUserGrp, text="Choose...", command=self.chooseUserColor)
+	    self.prefUserColorBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefUserBgColorLbl = Tkinter.Label(self.prefUserGrp, text="Background:")
+	    self.prefUserBgColorLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.prefUserBgColorEx = Tkinter.Label(self.prefUserGrp, text="   ")
+	    self.prefUserBgColorEx.grid(row=1, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefUserBgColorBut = Tkinter.Button(self.prefUserGrp, text="Choose...",
+							command=self.chooseUserBgColor)
+	    self.prefUserBgColorBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefUserListEx = Tkinter.Listbox(self.prefUserGrp, height=3, activestyle="none")
+	    self.prefUserListEx.insert(Tkinter.END, "AUsefulUser")
+	    self.prefUserListEx.insert(Tkinter.END, "SomeOtherUser")
+	    self.prefUserListEx.insert(Tkinter.END, "YetAnotherUser")
+	    self.prefUserListEx.config(state=Tkinter.DISABLED)
+	    self.prefUserListEx.grid(row=0, column=3, rowspan=2, padx=3, sticky=Tkinter.E)
+	    self.prefUserGrp.grid(row=3, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    # formatting & misc tab
 	    self.prefTabs.add("fmtMiscTab", label="Formatting & Misc")
 	    fmtMiscTab = self.prefTabs.fmtMiscTab
 #####
 ##
+	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
 	    #timestamps:
 	    #'showTimestamps':		bool
 	    #'timestampFormat':		str (python strptime format)
@@ -768,6 +792,11 @@ class MainGui(Tkinter.Frame):
 	self.prefFontExampleBox.tag_configure("exMsgColor", foreground=fgColor, background=bgColor)
 	self.prefBrightThresh.set(self.getPreference('brightnessThreshold'))
 	self.updateBrightExampleBox(bgColor)
+	userFg = self.getPreference('userColor', self.translateColor(self.userList.cget('fg')))
+	self.prefUserColorEx.config(background=userFg)
+	userBg = self.getPreference('userBgColor', self.translateColor(self.userList.cget('bg')))
+	self.prefUserBgColorEx.config(background=userBg)
+	self.prefUserListEx.config(fg=userFg, bg=userBg, disabledforeground=userFg)
 #####
 ##
 	#set preferences window control state
@@ -953,14 +982,15 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 
-    def chooseColor(self, title, pref, default, example, tagName, tagProp):
+    def chooseColor(self, title, pref, default, example, tagName=None, tagProp=None):
 	val = tkColorChooser.askcolor(default, parent=self.preferencesWin, title=title)
 	if ((not val) or (type(val) != type(())) or (len(val) != 2) or (not val[1])):
 	    return
 	self.prefsToSet[pref] = val[1]
 	example.config(bg=val[1])
-	kwargs = {tagProp: val[1]}
-	self.prefFontExampleBox.tag_configure(tagName, **kwargs)
+	if ((tagName) and (tagProp)):
+	    kwargs = {tagProp: val[1]}
+	    self.prefFontExampleBox.tag_configure(tagName, **kwargs)
 	self.prefApplyBut.config(state=Tkinter.NORMAL)
 	return val[1]
 
@@ -1043,6 +1073,18 @@ class MainGui(Tkinter.Frame):
 	self.updateBrightExampleBox()
 	self.prefApplyBut.config(state=Tkinter.NORMAL)
 
+    def chooseUserColor(self):
+	clr = self.getPreference('userColor', self.translateColor(self.userList.cget('fg')))
+	clr = self.prefsToSet.get('userColor', clr)
+	clr = self.chooseColor("User List Foreground", 'userColor', clr, self.prefUserColorEx)
+	self.prefUserListEx.config(fg=clr, disabledforeground=clr)
+
+    def chooseUserBgColor(self):
+	clr = self.getPreference('userBgColor', self.translateColor(self.userList.cget('bg')))
+	clr = self.prefsToSet.get('userBgColor', clr)
+	clr = self.chooseColor("User List Background", 'userBgColor', clr, self.prefUserBgColorEx)
+	self.prefUserListEx.config(bg=clr)
+
 #####
 ##
     #preferences window handlers
@@ -1065,13 +1107,31 @@ class MainGui(Tkinter.Frame):
 	    self.preferences[pref] = self.prefsToSet[pref]
 	    if (pref in CHAT_PREFERENCES):
 		updateChat = True
-	    else:
-#####
-##
-		pass
-		#apply pref: userColor, userBgColor, wrapChatText, userPaneVisible
-##
-#####
+	    elif (pref == 'userColor'):
+		self.userList.config(fg=self.prefsToSet[pref])
+	    elif (pref == 'userBgColor'):
+		self.userList.config(bg=self.prefsToSet[pref])
+	    elif (pref == 'wrapChatText'):
+		self.configWrapVar.set(int(self.prefsToSet['wrapChatText']))
+		if (self.prefsToSet['wrapChatText']):
+		    wrap = Tkinter.WORD
+		else:
+		    wrap = Tkinter.NONE
+		self.chatBox.config(wrap=wrap)
+	    elif (pref == 'userPaneVisible'):
+		w = self.master.winfo_width()
+		h = self.master.winfo_height()
+		x = self.master.winfo_x()
+		y = self.master.winfo_y()
+		if (self.prefsToSet['userPaneVisible']):
+		    self.panes.add(self.userPane, stretch="always")
+		    self.userPaneToggle.configure(text=">")
+		    self.configUserVar.set(1)
+		else:
+		    self.panes.remove(self.userPane)
+		    self.userPaneToggle.configure(text="<")
+		    self.configUserVar.set(0)
+		self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
 	savePreferences()
 	if ((updateChat) and (self.curChannel)):
 	    self.populateChat(self.channels[self.curChannel]['log'])
