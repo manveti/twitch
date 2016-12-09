@@ -6,6 +6,7 @@ import os.path
 import shelve
 import threading
 import Tkinter
+import tkColorChooser
 import tkFileDialog
 import tkFont
 import tkMessageBox
@@ -28,6 +29,10 @@ DEFAULT_PREFERENCES = {
     'userPaneVisible':		True,
     'wrapChatText':		True,
 }
+
+CHAT_PREFERENCES = set(['chatColor', 'chatBgColor', 'chatFontFamily', 'chatFontSize', 'chatFontBold',
+			'chatFontItalic', 'timestampColor', 'timestampBgColor', 'brightnessThreshold',
+			'showTimestamps', 'timestampFormat', 'latinThreshold'])
 
 EVENT_MSG = 0
 EVENT_JOIN = 1
@@ -221,6 +226,7 @@ class MainGui(Tkinter.Frame):
 	#stuff
 ##
 #####
+	self.prefsToSet = {}
 
 	self.chatBoxLock = threading.Lock()
 	self.userListLock = threading.Lock()
@@ -406,20 +412,8 @@ class MainGui(Tkinter.Frame):
 	if (kwargs):
 	    self.chatBox.tag_configure("msgColor", **kwargs)
 	    self.useMsgTag = True
-	kwargs = {}
-	if (self.preferences.get('chatFontFamily')):
-	    kwargs['family'] = self.preferences.get('chatFontFamily')
-	if (self.preferences.get('chatFontSize')):
-	    kwargs['size'] = self.preferences.get('chatFontSize')
-	if (self.preferences.get('chatFontBold')):
-	    kwargs['weight'] = "bold"
-	if (self.preferences.get('chatFontItalic')):
-	    kwargs['slant'] = "italic"
+	kwargs = self.getFontArgs()
 	if (kwargs):
-	    defaultAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
-	    for kw in ['family', 'weight', 'slant', 'overstrike', 'underline', 'size']:
-		if ((not kwargs.has_key(kw)) and (defaultAttrs.has_key(kw))):
-		    kwargs[kw] = defaultAttrs[kw]
 	    self.msgFont = tkFont.Font(**kwargs)
 	    self.chatBox.tag_configure("msgFont", font=self.msgFont)
 	    self.useFontTag = True
@@ -615,40 +609,174 @@ class MainGui(Tkinter.Frame):
 	    #login button
 ##
 #####
-	self.accountWin.state(newstate="normal")
+	self.accountWin.state(newstate=Tkinter.NORMAL)
+	self.accountWin.lift()
 
     def openPreferencesWin(self):
 	if (not self.preferencesWin):
-	    def closePreferencesWin():
-		self.preferencesWin.withdraw()
 	    self.preferencesWin = Tkinter.Toplevel()
-	    self.preferencesWin.protocol("WM_DELETE_WINDOW", closePreferencesWin)
+	    self.preferencesWin.protocol("WM_DELETE_WINDOW", self.preferencesCancel)
 	    self.preferencesWin.title("Preferences")
+	    self.prefTabs = Tix.NoteBook(self.preferencesWin)
+	    self.prefTabs.grid(row=0, column=0, columnspan=4, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefTabs.add("fntClrTab", label="Font & Colors")
+	    fntClrTab = self.prefTabs.fntClrTab
+	    self.prefChatGrp = Tkinter.LabelFrame(fntClrTab, text="Chat Colors")
+	    self.prefChatColorLbl = Tkinter.Label(self.prefChatGrp, text="Foreground:")
+	    self.prefChatColorLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefChatColorEx = Tkinter.Label(self.prefChatGrp, text="   ")
+	    self.prefChatColorEx.grid(row=0, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefChatColorBut = Tkinter.Button(self.prefChatGrp, text="Choose...", command=self.chooseChatColor)
+	    self.prefChatColorBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefChatBgColorLbl = Tkinter.Label(self.prefChatGrp, text="Background:")
+	    self.prefChatBgColorLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.prefChatBgColorEx = Tkinter.Label(self.prefChatGrp, text="   ")
+	    self.prefChatBgColorEx.grid(row=1, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefChatBgColorBut = Tkinter.Button(self.prefChatGrp, text="Choose...",
+							command=self.chooseChatBgColor)
+	    self.prefChatBgColorBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefChatGrp.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefTsGrp = Tkinter.LabelFrame(fntClrTab, text="Timestamp Colors")
+	    self.prefTsColorLbl = Tkinter.Label(self.prefTsGrp, text="Foreground:")
+	    self.prefTsColorLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefTsColorEx = Tkinter.Label(self.prefTsGrp, text="   ")
+	    self.prefTsColorEx.grid(row=0, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefTsColorBut = Tkinter.Button(self.prefTsGrp, text="Choose...", command=self.chooseTsColor)
+	    self.prefTsColorBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefTsBgColorLbl = Tkinter.Label(self.prefTsGrp, text="Background:")
+	    self.prefTsBgColorLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.prefTsBgColorEx = Tkinter.Label(self.prefTsGrp, text="   ")
+	    self.prefTsBgColorEx.grid(row=1, column=1, padx=3, pady=5,
+					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.prefTsBgColorBut = Tkinter.Button(self.prefTsGrp, text="Choose...", command=self.chooseTsBgColor)
+	    self.prefTsBgColorBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefTsGrp.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefFontGrp = Tkinter.LabelFrame(fntClrTab, text="Chat Font")
+	    self.prefFontFamLbl = Tkinter.Label(self.prefFontGrp, text="Family:")
+	    self.prefFontFamLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefFontFam = Tkinter.StringVar()
+	    self.prefFontFam.trace("w", self.updateFontFamily)
+	    families = [fam for fam in tkFont.families() if (fam) and (not fam.startswith("@"))]
+	    families.sort()
+	    self.prefFontFamLst = Tkinter.OptionMenu(self.prefFontGrp, self.prefFontFam, *families)
+	    self.prefFontFamLst.grid(row=0, column=1, columnspan=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefFontSizeLbl = Tkinter.Label(self.prefFontGrp, text="Size:")
+	    self.prefFontSizeLbl.grid(row=0, column=3, sticky=Tkinter.E)
+	    self.prefFontSize = Tkinter.IntVar()
+	    self.prefFontSizeBox = Tix.Control(self.prefFontGrp, variable=self.prefFontSize, integer=True,
+						min=3, max=144, autorepeat=False)
+	    self.prefFontSizeBox.grid(row=0, column=4, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefFontBold = Tkinter.IntVar()
+	    self.prefFontBoldBox = Tkinter.Checkbutton(self.prefFontGrp, text="Bold",
+							variable=self.prefFontBold)
+	    self.prefFontBoldBox.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.prefFontItalic = Tkinter.IntVar()
+	    self.prefFontItalicBox = Tkinter.Checkbutton(self.prefFontGrp, text="Italic",
+							variable=self.prefFontItalic)
+	    self.prefFontItalicBox.grid(row=1, column=1, sticky=Tkinter.W)
+	    kwargs = self.getFontArgs(force=True)
+	    self.prefFontFont = tkFont.Font(**kwargs)
+	    self.prefFontExampleBox = Tkinter.Text(self.prefFontGrp, height=1, width=28, font=self.prefFontFont)
+	    self.prefFontExampleBox.grid(row=1, column=2, columnspan=3, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefFontExampleBox.tag_configure("exTsColor")
+	    self.prefFontExampleBox.tag_configure("exMsgColor")
+	    self.prefFontExampleBox.insert(Tkinter.END, "12:34 ", "exTsColor")
+	    self.prefFontExampleBox.insert(Tkinter.END, "SomeUser: Some message", "exMsgColor")
+	    self.prefFontExampleBox.config(state=Tkinter.DISABLED)
+	    self.prefFontGrp.columnconfigure(2, weight=1)
+	    self.prefFontGrp.grid(row=1, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefBrightGrp = Tkinter.LabelFrame(fntClrTab, text="Brightness Difference Threshold")
+	    self.prefBrightExampleBox = Tkinter.Text(self.prefBrightGrp, height=1, width=26, font=self.prefFontFont)
+	    for i in xrange(0, 26):
+		br = (i * 255) / 25
+		self.prefBrightExampleBox.tag_configure("ex%s" % i, foreground="#%02x%02x%02x" % (br, br, br))
+		self.prefBrightExampleBox.insert(Tkinter.END, "%c" % (ord('a') + i), "ex%s" % i)
+	    self.prefBrightExampleBox.config(state=Tkinter.DISABLED)
+	    self.prefBrightExampleBox.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefBrightThresh = Tkinter.IntVar()
+	    self.prefBrightThreshBox = Tix.Control(self.prefBrightGrp, variable=self.prefBrightThresh,
+						    integer=True, min=0, max=128, autorepeat=False)
+	    self.prefBrightThreshBox.grid(row=0, column=1, sticky=Tkinter.W)
+	    self.prefBrightGrp.grid(row=2, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 #####
 ##
-	    #preferences stuff:
-	    #'brightnessThreshold':	int 0..127
-	    #'latinThreshold':		float 0..1
-	    #'maxInputHistory':		int
-	    #'maxScratchWidth':		int
-	    #'showTimestamps':		bool
-	    #'timestampFormat':		str (python strptime format)
-	    #'userPaneVisible':		bool
-	    #'wrapChatText':		bool
-	    #'userPaneVisible':		bool
-	    #'chatColor':		str ("#%02x%02x%02x") (chat foreground)
-	    #'chatBgColor':		str ("#%02x%02x%02x") (chat background)
-	    #'timestampColor':		str ("#%02x%02x%02x") (chat timestamp foreground)
-	    #'timestampBgColor':	str ("#%02x%02x%02x") (chat timestamp background)
-	    #'chatFontFamily':		str
-	    #'chatFontSize':		int
-	    #'chatFontBold':		bool
-	    #'chatFontItalic':		bool
+	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
+	    #user list:
 	    #'userColor':		str ("#%02x%02x%02x") (user list foreground)
 	    #'userBgColor':		str ("#%02x%02x%02x") (user list background)
 ##
 #####
-	self.preferencesWin.state(newstate="normal")
+	    self.prefTabs.add("fmtMiscTab", label="Formatting & Misc")
+	    fmtMiscTab = self.prefTabs.fmtMiscTab
+#####
+##
+	    #timestamps:
+	    #'showTimestamps':		bool
+	    #'timestampFormat':		str (python strptime format)
+	    #other formatting:
+	    #'latinThreshold':		float 0..1
+	    #'wrapChatText':		bool
+	    #misc:
+	    #'maxInputHistory':		int
+	    #'maxScratchWidth':		int
+	    #'userPaneVisible':		bool
+##
+#####
+	    self.prefOkBut = Tkinter.Button(self.preferencesWin, text="OK", command=self.preferencesOK)
+	    self.prefOkBut.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefCancelBut = Tkinter.Button(self.preferencesWin, text="Cancel", command=self.preferencesCancel)
+	    self.prefCancelBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefApplyBut = Tkinter.Button(self.preferencesWin, text="Apply", command=self.preferencesApply)
+	    self.prefApplyBut.grid(row=1, column=3, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.preferencesWin.columnconfigure(0, weight=1)
+	    self.preferencesWin.rowconfigure(0, weight=1)
+	    self.prefFontSizeBox.configure(command=self.updateFontSize)
+	    self.prefFontBoldBox.configure(command=self.updateFontBold)
+	    self.prefFontItalicBox.configure(command=self.updateFontItalic)
+	    self.prefBrightThreshBox.configure(command=self.updateBrightThresh)
+	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	self.prefChatColorEx.config(background=fgColor)
+	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	self.prefChatBgColorEx.config(background=bgColor)
+	tsClr = self.getPreference('timestampColor', fgColor)
+	self.prefTsColorEx.config(background=tsClr)
+	tsBgClr = self.getPreference('timestampBgColor', bgColor)
+	self.prefTsBgColorEx.config(background=tsBgClr)
+	fontAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	fFam = self.getPreference('chatFontFamily', fontAttrs.get('family', tkFont.families()[0]))
+	self.prefFontFam.set(fFam)
+	fSize = self.getPreference('chatFontSize', fontAttrs.get('size', 12))
+	self.prefFontSize.set(fSize)
+	fWeight = fontAttrs.get('weight', "normal")
+	if (self.preferences.has_key('chatFontBold')):
+	    if (self.preferences['chatFontBold']):
+		fWeight = "bold"
+	    else:
+		fWeight = "normal"
+	fSlant = fontAttrs.get('slant', "roman")
+	if (self.preferences.has_key('chatFontItalic')):
+	    if (self.preferences['chatFontItalic']):
+		fSlant = "italic"
+	    else:
+		fSlant = "roman"
+	self.prefFontFont.config(family=fFam, size=fSize, weight=fWeight, slant=fSlant)
+	self.prefFontExampleBox.config(bg=bgColor)
+	self.prefFontExampleBox.tag_configure("exTsColor", foreground=tsClr, background=tsBgClr)
+	self.prefFontExampleBox.tag_configure("exMsgColor", foreground=fgColor, background=bgColor)
+	self.prefBrightThresh.set(self.getPreference('brightnessThreshold'))
+	self.updateBrightExampleBox(bgColor)
+#####
+##
+	#set preferences window control state
+##
+#####
+	self.prefApplyBut.config(state=Tkinter.DISABLED)
+	self.prefsToSet = {}
+	self.preferencesWin.state(newstate=Tkinter.NORMAL)
+	self.preferencesWin.lift()
 
     def addFavorite(self):
 	if ((not self.curChannel) or (self.curChannel in self.preferences.get('favorites', []))):
@@ -821,8 +949,133 @@ class MainGui(Tkinter.Frame):
 #####
 ##
     #other handlers
+    #account window handlers
 ##
 #####
+
+    def chooseColor(self, title, pref, default, example, tagName, tagProp):
+	val = tkColorChooser.askcolor(default, parent=self.preferencesWin, title=title)
+	if ((not val) or (type(val) != type(())) or (len(val) != 2) or (not val[1])):
+	    return
+	self.prefsToSet[pref] = val[1]
+	example.config(bg=val[1])
+	kwargs = {tagProp: val[1]}
+	self.prefFontExampleBox.tag_configure(tagName, **kwargs)
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+	return val[1]
+
+    def chooseChatColor(self):
+	clr = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	clr = self.prefsToSet.get('chatColor', clr)
+	clr = self.chooseColor("Chat Foreground", 'chatColor', clr, self.prefChatColorEx,
+				"exMsgColor", 'foreground')
+	if ((clr) and (not self.getPreference('timestampColor'))):
+	    self.prefTsColorEx.config(bg=clr)
+	    self.prefFontExampleBox.tag_configure("exTsColor", foreground=clr)
+
+    def chooseChatBgColor(self):
+	clr = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	clr = self.prefsToSet.get('chatBgColor', clr)
+	clr = self.chooseColor("Chat Background", 'chatBgColor', clr, self.prefChatBgColorEx,
+				"exMsgColor", 'background')
+	if (clr):
+	    self.prefFontExampleBox.config(bg=clr)
+	    self.updateBrightExampleBox(clr)
+	    if (not self.getPreference('timestampBgColor')):
+		self.prefTsBgColorEx.config(bg=clr)
+		self.prefFontExampleBox.tag_configure("exTsColor", background=clr)
+
+    def chooseTsColor(self):
+	chatClr = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	chatClr = self.prefsToSet.get('chatColor', chatClr)
+	clr = self.getPreference('timestampColor', chatClr)
+	clr = self.prefsToSet.get('timestampColor', clr)
+	self.chooseColor("Timestamp Foreground", 'timestampColor', clr, self.prefTsColorEx,
+			    "exTsColor", 'foreground')
+
+    def chooseTsBgColor(self):
+	chatClr = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	chatClr = self.prefsToSet.get('chatBgColor', clr)
+	clr = self.getPreference('timestampBgColor', chatClr)
+	clr = self.prefsToSet.get('timestampBgColor', clr)
+	self.chooseColor("Timestamp Background", 'timestampBgColor', clr, self.prefTsBgColorEx,
+			    "exTsColor", 'background')
+
+    def updateFontFamily(self, *args, **kwargs):
+	self.prefsToSet['chatFontFamily'] = self.prefFontFam.get()
+	self.prefFontFont.config(family=self.prefsToSet['chatFontFamily'])
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateFontSize(self, *args, **kwargs):
+	self.prefsToSet['chatFontSize'] = self.prefFontSize.get()
+	self.prefFontFont.config(size=self.prefsToSet['chatFontSize'])
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateFontBold(self, *args, **kwargs):
+	self.prefsToSet['chatFontBold'] = bool(self.prefFontBold.get())
+	if (self.prefsToSet['chatFontBold']):
+	    self.prefFontFont.config(weight="bold")
+	else:
+	    self.prefFontFont.config(weight="normal")
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateFontItalic(self, *args, **kwargs):
+	self.prefsToSet['chatFontItalic'] = bool(self.prefFontItalic.get())
+	if (self.prefsToSet['chatFontItalic']):
+	    self.prefFontFont.config(slant="italic")
+	else:
+	    self.prefFontFont.config(slant="roman")
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateBrightExampleBox(self, bgColor=None):
+	if (not bgColor):
+	    bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	    bgColor = self.prefsToSet.get('chatBgColor', bgColor)
+	self.prefBrightExampleBox.config(bg=bgColor)
+	threshold = self.prefsToSet.get('brightnessThreshold', self.getPreference('brightnessThreshold'))
+	for i in xrange(0, 26):
+	    br = (i * 255) / 25
+	    clr = self.adjustHexColor(bgColor, "#%02x%02x%02x" % (br, br, br), threshold)
+	    self.prefBrightExampleBox.tag_configure("ex%s" % i, background=clr)
+
+    def updateBrightThresh(self, *args, **kwargs):
+	self.prefsToSet['brightnessThreshold'] = self.prefBrightThresh.get()
+	self.updateBrightExampleBox()
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+#####
+##
+    #preferences window handlers
+##
+#####
+
+    def preferencesOK(self):
+	self.preferencesApply()
+	self.preferencesWin.withdraw()
+
+    def preferencesCancel(self):
+	self.preferencesWin.withdraw()
+
+    def preferencesApply(self):
+	self.prefFontSizeBox.update()
+	if (not self.prefsToSet):
+	    return
+	updateChat = False
+	for pref in self.prefsToSet.keys():
+	    self.preferences[pref] = self.prefsToSet[pref]
+	    if (pref in CHAT_PREFERENCES):
+		updateChat = True
+	    else:
+#####
+##
+		pass
+		#apply pref: userColor, userBgColor, wrapChatText, userPaneVisible
+##
+#####
+	savePreferences()
+	if ((updateChat) and (self.curChannel)):
+	    self.populateChat(self.channels[self.curChannel]['log'])
+	self.prefApplyBut.config(state=Tkinter.DISABLED)
 
     def getPreference(self, pref, default=None):
 	return self.preferences.get(pref, DEFAULT_PREFERENCES.get(pref, default))
@@ -863,8 +1116,9 @@ class MainGui(Tkinter.Frame):
 	users.sort(key=lambda u: self.channels[channel]['users'][u].get('display', u).lower())
 	return users
 
-    def adjustColor(self, c, ref):
-	threshold = self.getPreference('brightnessThreshold')
+    def adjustColor(self, c, ref, threshold=None):
+	if (type(threshold) != type(0)):
+	    threshold = self.getPreference('brightnessThreshold')
 	cBr = getColorBrightness(c)
 	rBr = getColorBrightness(ref)
 	if (abs(cBr - rBr) >= threshold):
@@ -896,14 +1150,31 @@ class MainGui(Tkinter.Frame):
 	    f = max(float(rBr - threshold) / cBr, 0)
 	    return (min(c[0] * f, 255), min(c[1] * f, 255), min(c[2] * f, 255))
 
-    def adjustHexColor(self, c, ref):
-	return rgbToHex(self.adjustColor(hexToRgb(c), hexToRgb(ref)))
+    def adjustHexColor(self, c, ref, threshold=None):
+	return rgbToHex(self.adjustColor(hexToRgb(c), hexToRgb(ref), threshold))
 
     def translateColor(self, c):
 	if (not c):
 	    return "#000000"
 	t16 = self.winfo_rgb(c)
 	return rgbToHex((t16[0] / 256, t16[1] / 256, t16[2] / 256))
+
+    def getFontArgs(self, force=False):
+	retval = {}
+	if (self.preferences.get('chatFontFamily')):
+	    retval['family'] = self.preferences.get('chatFontFamily')
+	if (self.preferences.get('chatFontSize')):
+	    retval['size'] = self.preferences.get('chatFontSize')
+	if (self.preferences.get('chatFontBold')):
+	    retval['weight'] = "bold"
+	if (self.preferences.get('chatFontItalic')):
+	    retval['slant'] = "italic"
+	if ((retval) or (force)):
+	    defaultAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	    for kw in ['family', 'weight', 'slant', 'overstrike', 'underline', 'size']:
+		if ((not retval.has_key(kw)) and (defaultAttrs.has_key(kw))):
+		    retval[kw] = defaultAttrs[kw]
+	return retval
 
     def populateChat(self, log):
 	self.chatBoxLock.acquire()
