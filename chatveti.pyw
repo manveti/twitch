@@ -736,6 +736,20 @@ class MainGui(Tkinter.Frame):
 	    self.prefUserListEx.config(state=Tkinter.DISABLED)
 	    self.prefUserListEx.grid(row=0, column=3, rowspan=2, padx=3, sticky=Tkinter.E)
 	    self.prefUserGrp.grid(row=3, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefFntClrDefGrp = Tkinter.LabelFrame(fntClrTab, text="Reset to Default")
+	    self.prefColorResetBut = Tkinter.Button(self.prefFntClrDefGrp, text="Reset Colors",
+						    command=self.prefColorReset)
+	    self.prefColorResetBut.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefFontResetBut = Tkinter.Button(self.prefFntClrDefGrp, text="Reset Font",
+						    command=self.prefFontReset)
+	    self.prefFontResetBut.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefBrightResetBut = Tkinter.Button(self.prefFntClrDefGrp, text="Reset Brightness",
+						    command=self.prefBrightReset)
+	    self.prefBrightResetBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefFntClrDefGrp.columnconfigure(0, weight=1)
+	    self.prefFntClrDefGrp.columnconfigure(1, weight=1)
+	    self.prefFntClrDefGrp.columnconfigure(2, weight=1)
+	    self.prefFntClrDefGrp.grid(row=4, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    fntClrTab.columnconfigure(0, weight=1)
 	    fntClrTab.columnconfigure(1, weight=1)
 	    # formatting & misc tab
@@ -752,34 +766,47 @@ class MainGui(Tkinter.Frame):
 	    self.prefTsFmtEx.grid(row=1, column=0, columnspan=2, sticky=Tkinter.W)
 	    self.prefTsShow = Tkinter.IntVar()
 	    self.prefTsShowBox = Tkinter.Checkbutton(self.prefTsGrp, text="Show Chat Timestamps",
-							variable=self.prefTsShow)
+							variable=self.prefTsShow, command=self.updateTsShow)
 	    self.prefTsShowBox.grid(row=2, column=0, columnspan=2, sticky=Tkinter.W)
 	    self.prefTsGrp.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefFmtGrp = Tkinter.LabelFrame(fmtMiscTab, text="Other Formatting")
-#####
-##
-	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
-	    #Tix.Control for latinThreshold
-	    #Tkinter.Checkbutton for wrapChatText
-	    #'latinThreshold':		float 0..1
-	    #'wrapChatText':		bool
-##
-#####
+	    self.prefLatinLbl = Tkinter.Label(self.prefFmtGrp,
+						text="Annotate display name if proportion of Latin chars <")
+	    self.prefLatinLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefLatinThresh = Tkinter.DoubleVar()
+	    self.prefLatinThreshBox = Tix.Control(self.prefFmtGrp, variable=self.prefLatinThresh,
+						    min=0, max=1, step=0.01, command=self.updateLatinThresh)
+	    self.prefLatinThreshBox.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefWrapChat = Tkinter.IntVar()
+	    self.prefWrapChatBox = Tkinter.Checkbutton(self.prefFmtGrp, text="Wrap Chat Lines",
+							variable=self.prefWrapChat, command=self.updateWrapChat)
+	    self.prefWrapChatBox.grid(row=1, column=0, columnspan=2, sticky=Tkinter.W)
 	    self.prefFmtGrp.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefMiscGrp = Tkinter.LabelFrame(fmtMiscTab, text="Miscellaneous")
-#####
-##
-	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
-	    #Tix.Control for maxInputHistory
-	    #Tix.Control for maxSearchWidth
-	    #Tkinter.Checkbutton for userPaneVisible
-	    #'maxInputHistory':		int
-	    #'maxScratchWidth':		int
-	    #'userPaneVisible':		bool
-##
-#####
+	    self.prefMaxHistoryLbl = Tkinter.Label(self.prefMiscGrp, text="Maximum Input History Retained:")
+	    self.prefMaxHistoryLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefMaxHistory = Tkinter.IntVar()
+	    self.prefMaxHistoryBox = Tix.Control(self.prefMiscGrp, variable=self.prefMaxHistory,
+						    min=0, command=self.updateMaxHistory)
+	    self.prefMaxHistoryBox.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefMaxScratchLbl = Tkinter.Label(self.prefMiscGrp, text="Maximum Scratch Menu Entry Width:")
+	    self.prefMaxScratchLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.prefMaxScratch = Tkinter.IntVar()
+	    self.prefMaxScratchBox = Tix.Control(self.prefMiscGrp, variable=self.prefMaxScratch,
+						    min=5, command=self.updateMaxScratch)
+	    self.prefMaxScratchBox.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefShowUser = Tkinter.IntVar()
+	    self.prefShowUserBox = Tkinter.Checkbutton(self.prefMiscGrp, text="Show User Pane",
+							variable=self.prefShowUser, command=self.updateShowUser)
+	    self.prefShowUserBox.grid(row=2, column=0, columnspan=2, sticky=Tkinter.W)
 	    self.prefMiscGrp.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefFmtMiscResetBut = Tkinter.Button(fmtMiscTab, text="Reset Page to Default",
+							command=self.prefFmtMiscReset)
+	    self.prefFmtMiscResetBut.grid(row=3, column=0, sticky=Tkinter.E)
 	    fmtMiscTab.columnconfigure(0, weight=1)
+	    self.prefResetBut = Tkinter.Button(self.preferencesWin, text="Reset All to Default",
+						command=self.preferencesReset)
+	    self.prefResetBut.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.N))
 	    self.prefOkBut = Tkinter.Button(self.preferencesWin, text="OK", command=self.preferencesOK)
 	    self.prefOkBut.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefCancelBut = Tkinter.Button(self.preferencesWin, text="Cancel", command=self.preferencesCancel)
@@ -792,7 +819,6 @@ class MainGui(Tkinter.Frame):
 	    self.prefFontBoldBox.configure(command=self.updateFontBold)
 	    self.prefFontItalicBox.configure(command=self.updateFontItalic)
 	    self.prefBrightThreshBox.configure(command=self.updateBrightThresh)
-	    self.prefTsShowBox.configure(command=self.updateTsShow)
 	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
 	self.prefChatColorEx.config(background=fgColor)
 	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
@@ -835,11 +861,11 @@ class MainGui(Tkinter.Frame):
 	self.prefTsFmtBox.set(tsFmt)
 	self.prefTsFmtEx.config(text=time.strftime(tsFmt))
 	self.prefTsShow.set(int(self.getPreference('showTimestamps')))
-#####
-##
-	#set preferences window control state
-##
-#####
+	self.prefLatinThresh.set(self.getPreference('latinThreshold'))
+	self.prefWrapChat.set(int(self.getPreference('wrapChatText')))
+	self.prefMaxHistory.set(self.getPreference('maxInputHistory'))
+	self.prefMaxScratch.set(self.getPreference('maxScratchWidth'))
+	self.prefShowUser.set(int(self.getPreference('userPaneVisible')))
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
 	self.prefsToSet = {}
 	self.preferencesWin.state(newstate=Tkinter.NORMAL)
@@ -1123,6 +1149,96 @@ class MainGui(Tkinter.Frame):
 	clr = self.chooseColor("User List Background", 'userBgColor', clr, self.prefUserBgColorEx)
 	self.prefUserListEx.config(bg=clr)
 
+    def prefColorReset(self):
+	fgColor = self.translateColor("SystemWindowText")
+	bgColor = self.translateColor("SystemWindow")
+	userColor = self.translateColor("SystemButtonText")
+	changed = False
+	opts = [('chatColor', fgColor, self.prefChatColorEx, self.prefTsColorEx,
+			"exMsgColor", "exTsColor", 'foreground'),
+		('chatBgColor', bgColor, self.prefChatBgColorEx, self.prefTsBgColorEx,
+			"exMsgColor", "exTsColor", 'background'),
+		('timestampColor', fgColor, self.prefTsColorEx, None,
+			"exTsColor", None, 'foreground'),
+		('timestampBgColor', bgColor, self.prefTsBgColorEx, None,
+			"exTsColor", None, 'background')]
+	for (pref, color, example, subExample, tagName, subTagName, tagProp) in opts:
+	    changeIt = False
+	    if (self.prefsToSet.has_key(pref)):
+		if (self.prefsToSet[pref] != color):
+		    changeIt = True
+	    elif (self.preferences.has_key(pref)):
+		if (self.preferences[pref] != color):
+		    changeIt = True
+	    if (changeIt):
+		self.prefsToSet[pref] = color
+		example.config(bg=color)
+		if (subExample):
+		    subExample.config(bg=color)
+		kwargs = {tagProp: color}
+		self.prefFontExampleBox.tag_configure(tagName, **kwargs)
+		if (subTagName):
+		    self.prefFontExampleBox.tag_configure(subTagName, **kwargs)
+		changed = True
+	if (changed):
+	    self.prefFontExampleBox.config(bg=bgColor)
+	    self.updateBrightExampleBox(bgColor)
+	opts = [('userColor', userColor, self.prefUserColorEx, 'fg', 'disabledforeground'),
+		('userBgColor', bgColor, self.prefUserBgColorEx, 'bg', None)]
+	for (pref, color, example, prop, subProp) in opts:
+	    changeIt = False
+	    if (self.prefsToSet.has_key(pref)):
+		if (self.prefsToSet[pref] != color):
+		    changeIt = True
+	    if (self.preferences.has_key(pref)):
+		if (self.preferences[pref] != color):
+		    changeIt = True
+	    if (changeIt):
+		self.prefsToSet[pref] = color
+		example.config(bg=color)
+		kwargs = {prop: color}
+		if (subProp):
+		    kwargs[subProp] = color
+		self.prefUserListEx.config(**kwargs)
+		changed = True
+	if (changed):
+	    self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def prefFontReset(self):
+	font = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	for (prefKey, fontKey, var) in [('chatFontFamily', 'family', self.prefFontFam),
+					('chatFontSize', 'size', self.prefFontSize)]:
+	    if (self.prefsToSet.has_key(prefKey)):
+		if (self.prefsToSet[prefKey] != font[fontKey]):
+		    var.set(font[fontKey])
+	    elif (self.preferences.has_key(prefKey)):
+		if (self.preferences[prefKey] != font[fontKey]):
+		    var.set(font[fontKey])
+	opts = [('chatFontBold', 'weight', "bold", "normal", self.prefFontBold),
+		('chatFontItalic', 'slant', "italic", "roman", self.prefFontItalic)]
+	updateArgs = {}
+	for (prefKey, fontKey, fontTrue, fontFalse, var) in opts:
+	    if (self.prefsToSet.has_key(prefKey)):
+		if (((self.prefsToSet[prefKey]) and (font[fontKey] != fontTrue)) or
+			((not self.prefsToSet[prefKey]) and (font[fontKey] != fontTrue))):
+		    var.set(int(not self.prefsToSet[prefKey]))
+		    updateArgs[fontKey] = font[fontKey]
+	    elif (self.preferences.has_key(prefKey)):
+		if (((self.preferences[prefKey]) and (font[fontKey] != fontTrue)) or
+			((not self.preferences[prefKey]) and (font[fontKey] != fontFalse))):
+		    var.set(int(not self.preferences[prefKey]))
+		    updateArgs[fontKey] = font[fontKey]
+	if (updateArgs):
+	    self.prefFontFont.config(**updateArgs)
+
+    def prefBrightReset(self):
+	if (self.prefsToSet.get('brightnessThreshold') == DEFAULT_PREFERENCES['brightnessThreshold']):
+	    return
+	if ((not self.prefsToSet.has_key('brightnessThreshold')) and
+		(self.getPreference('brightnessThreshold') == DEFAULT_PREFERENCES['brightnessThreshold'])):
+	    return
+	self.prefBrightThresh.set(DEFAULT_PREFERENCES['brightnessThreshold'])
+
     def updateTsFormat(self, *args, **kwargs):
 	newFmt = self.prefTsFmt.get()
 	try:
@@ -1137,11 +1253,46 @@ class MainGui(Tkinter.Frame):
 	self.prefsToSet['showTimestamps'] = bool(self.prefTsShow.get())
 	self.prefApplyBut.config(state=Tkinter.NORMAL)
 
-#####
-##
-    #other preferences window handlers
-##
-#####
+    def updateLatinThresh(self, *args, **kwargs):
+	self.prefsToSet['latinThreshold'] = self.prefLatinThresh.get()
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateWrapChat(self, *args, **kwargs):
+	self.prefsToSet['wrapChatText'] = bool(self.prefWrapChat.get())
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateMaxHistory(self, *args, **kwargs):
+	self.prefsToSet['maxInputHistory'] = self.prefMaxHistory.get()
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateMaxScratch(self, *args, **kwargs):
+	self.prefsToSet['maxScratchWidth'] = self.prefMaxScratch.get()
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateShowUser(self, *args, **kwargs):
+	self.prefsToSet['userPaneVisible'] = bool(self.prefShowUser.get())
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def prefFmtMiscReset(self):
+	for (pref, var, cast) in [('timestampFormat', self.prefTsFmt, str),
+				    ('showTimestamps', self.prefTsShow, int),
+				    ('latinThreshold', self.prefLatinThresh, float),
+				    ('wrapChatText', self.prefWrapChat, int),
+				    ('maxInputHistory', self.prefMaxHistory, int),
+				    ('maxScratchWidth', self.prefMaxScratch, int),
+				    ('userPaneVisible', self.prefShowUser, int)]:
+	    if (self.prefsToSet.has_key(pref)):
+		if (self.prefsToSet[pref] != DEFAULT_PREFERENCES[pref]):
+		    var.set(cast(DEFAULT_PREFERENCES[pref]))
+	    elif (self.preferences.has_key(pref)):
+		if (self.preferences[pref] != DEFAULT_PREFERENCES[pref]):
+		    var.set(cast(DEFAULT_PREFERENCES[pref]))
+
+    def preferencesReset(self):
+	self.prefColorReset()
+	self.prefFontReset()
+	self.prefBrightReset()
+	self.prefFmtMiscReset()
 
     def preferencesOK(self):
 	self.preferencesApply()
@@ -1170,6 +1321,11 @@ class MainGui(Tkinter.Frame):
 		else:
 		    wrap = Tkinter.NONE
 		self.chatBox.config(wrap=wrap)
+#####
+##
+	    #maxScratchWidth: repopulate self.scratchMen
+##
+#####
 	    elif (pref == 'userPaneVisible'):
 		w = self.master.winfo_width()
 		h = self.master.winfo_height()
@@ -1184,7 +1340,7 @@ class MainGui(Tkinter.Frame):
 		    self.userPaneToggle.configure(text="<")
 		    self.configUserVar.set(0)
 		self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
-	savePreferences()
+	self.savePreferences()
 	if ((updateChat) and (self.curChannel)):
 	    self.populateChat(self.channels[self.curChannel]['log'])
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
