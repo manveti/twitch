@@ -34,6 +34,9 @@ CHAT_PREFERENCES = set(['chatColor', 'chatBgColor', 'chatFontFamily', 'chatFontS
 			'chatFontItalic', 'timestampColor', 'timestampBgColor', 'brightnessThreshold',
 			'showTimestamps', 'timestampFormat', 'latinThreshold'])
 
+TIMESTAMP_FORMATS = ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p",
+		    "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:S", "%m/%d/%y %I:%M %p", "%X", "%c"]
+
 EVENT_MSG = 0
 EVENT_JOIN = 1
 EVENT_LEAVE = 2
@@ -645,22 +648,23 @@ class MainGui(Tkinter.Frame):
 							command=self.chooseChatBgColor)
 	    self.prefChatBgColorBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E))
 	    self.prefChatGrp.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
-	    self.prefTsGrp = Tkinter.LabelFrame(fntClrTab, text="Timestamp Colors")
-	    self.prefTsColorLbl = Tkinter.Label(self.prefTsGrp, text="Foreground:")
+	    self.prefTsClrGrp = Tkinter.LabelFrame(fntClrTab, text="Timestamp Colors")
+	    self.prefTsColorLbl = Tkinter.Label(self.prefTsClrGrp, text="Foreground:")
 	    self.prefTsColorLbl.grid(row=0, column=0, sticky=Tkinter.W)
-	    self.prefTsColorEx = Tkinter.Label(self.prefTsGrp, text="   ")
+	    self.prefTsColorEx = Tkinter.Label(self.prefTsClrGrp, text="   ")
 	    self.prefTsColorEx.grid(row=0, column=1, padx=3, pady=5,
 					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
-	    self.prefTsColorBut = Tkinter.Button(self.prefTsGrp, text="Choose...", command=self.chooseTsColor)
+	    self.prefTsColorBut = Tkinter.Button(self.prefTsClrGrp, text="Choose...", command=self.chooseTsColor)
 	    self.prefTsColorBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
-	    self.prefTsBgColorLbl = Tkinter.Label(self.prefTsGrp, text="Background:")
+	    self.prefTsBgColorLbl = Tkinter.Label(self.prefTsClrGrp, text="Background:")
 	    self.prefTsBgColorLbl.grid(row=1, column=0, sticky=Tkinter.W)
-	    self.prefTsBgColorEx = Tkinter.Label(self.prefTsGrp, text="   ")
+	    self.prefTsBgColorEx = Tkinter.Label(self.prefTsClrGrp, text="   ")
 	    self.prefTsBgColorEx.grid(row=1, column=1, padx=3, pady=5,
 					sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
-	    self.prefTsBgColorBut = Tkinter.Button(self.prefTsGrp, text="Choose...", command=self.chooseTsBgColor)
+	    self.prefTsBgColorBut = Tkinter.Button(self.prefTsClrGrp, text="Choose...",
+						    command=self.chooseTsBgColor)
 	    self.prefTsBgColorBut.grid(row=1, column=2, sticky=(Tkinter.W, Tkinter.E))
-	    self.prefTsGrp.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefTsClrGrp.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefFontGrp = Tkinter.LabelFrame(fntClrTab, text="Chat Font")
 	    self.prefFontFamLbl = Tkinter.Label(self.prefFontGrp, text="Family:")
 	    self.prefFontFamLbl.grid(row=0, column=0, sticky=Tkinter.W)
@@ -668,7 +672,8 @@ class MainGui(Tkinter.Frame):
 	    self.prefFontFam.trace("w", self.updateFontFamily)
 	    families = [fam for fam in tkFont.families() if (fam) and (not fam.startswith("@"))]
 	    families.sort()
-	    self.prefFontFamLst = Tkinter.OptionMenu(self.prefFontGrp, self.prefFontFam, *families)
+	    self.prefFontFamLst = ttk.Combobox(self.prefFontGrp, textvariable=self.prefFontFam, values=families,
+						state="readonly")
 	    self.prefFontFamLst.grid(row=0, column=1, columnspan=2, sticky=(Tkinter.W, Tkinter.E))
 	    self.prefFontSizeLbl = Tkinter.Label(self.prefFontGrp, text="Size:")
 	    self.prefFontSizeLbl.grid(row=0, column=3, sticky=Tkinter.E)
@@ -731,24 +736,50 @@ class MainGui(Tkinter.Frame):
 	    self.prefUserListEx.config(state=Tkinter.DISABLED)
 	    self.prefUserListEx.grid(row=0, column=3, rowspan=2, padx=3, sticky=Tkinter.E)
 	    self.prefUserGrp.grid(row=3, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    fntClrTab.columnconfigure(0, weight=1)
+	    fntClrTab.columnconfigure(1, weight=1)
 	    # formatting & misc tab
 	    self.prefTabs.add("fmtMiscTab", label="Formatting & Misc")
 	    fmtMiscTab = self.prefTabs.fmtMiscTab
+	    self.prefTsGrp = Tkinter.LabelFrame(fmtMiscTab, text="Timestamps")
+	    self.prefTsFmtLbl = Tkinter.Label(self.prefTsGrp, text="Format:")
+	    self.prefTsFmtLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.prefTsFmt = Tkinter.StringVar()
+	    self.prefTsFmt.trace("w", self.updateTsFormat)
+	    self.prefTsFmtBox = ttk.Combobox(self.prefTsGrp, textvariable=self.prefTsFmt, values=TIMESTAMP_FORMATS)
+	    self.prefTsFmtBox.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.prefTsFmtEx = Tkinter.Label(self.prefTsGrp, text="")
+	    self.prefTsFmtEx.grid(row=1, column=0, columnspan=2, sticky=Tkinter.W)
+	    self.prefTsShow = Tkinter.IntVar()
+	    self.prefTsShowBox = Tkinter.Checkbutton(self.prefTsGrp, text="Show Chat Timestamps",
+							variable=self.prefTsShow)
+	    self.prefTsShowBox.grid(row=2, column=0, columnspan=2, sticky=Tkinter.W)
+	    self.prefTsGrp.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefFmtGrp = Tkinter.LabelFrame(fmtMiscTab, text="Other Formatting")
 #####
 ##
 	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
-	    #timestamps:
-	    #'showTimestamps':		bool
-	    #'timestampFormat':		str (python strptime format)
-	    #other formatting:
+	    #Tix.Control for latinThreshold
+	    #Tkinter.Checkbutton for wrapChatText
 	    #'latinThreshold':		float 0..1
 	    #'wrapChatText':		bool
-	    #misc:
+##
+#####
+	    self.prefFmtGrp.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.prefMiscGrp = Tkinter.LabelFrame(fmtMiscTab, text="Miscellaneous")
+#####
+##
+	    #any changes need to do self.prefApplyBut.config(state=Tkinter.NORMAL)
+	    #Tix.Control for maxInputHistory
+	    #Tix.Control for maxSearchWidth
+	    #Tkinter.Checkbutton for userPaneVisible
 	    #'maxInputHistory':		int
 	    #'maxScratchWidth':		int
 	    #'userPaneVisible':		bool
 ##
 #####
+	    self.prefMiscGrp.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    fmtMiscTab.columnconfigure(0, weight=1)
 	    self.prefOkBut = Tkinter.Button(self.preferencesWin, text="OK", command=self.preferencesOK)
 	    self.prefOkBut.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefCancelBut = Tkinter.Button(self.preferencesWin, text="Cancel", command=self.preferencesCancel)
@@ -761,6 +792,7 @@ class MainGui(Tkinter.Frame):
 	    self.prefFontBoldBox.configure(command=self.updateFontBold)
 	    self.prefFontItalicBox.configure(command=self.updateFontItalic)
 	    self.prefBrightThreshBox.configure(command=self.updateBrightThresh)
+	    self.prefTsShowBox.configure(command=self.updateTsShow)
 	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
 	self.prefChatColorEx.config(background=fgColor)
 	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
@@ -780,12 +812,14 @@ class MainGui(Tkinter.Frame):
 		fWeight = "bold"
 	    else:
 		fWeight = "normal"
+	self.prefFontBold.set(int(fWeight == "bold"))
 	fSlant = fontAttrs.get('slant', "roman")
 	if (self.preferences.has_key('chatFontItalic')):
 	    if (self.preferences['chatFontItalic']):
 		fSlant = "italic"
 	    else:
 		fSlant = "roman"
+	self.prefFontItalic.set(int(fSlant == "italic"))
 	self.prefFontFont.config(family=fFam, size=fSize, weight=fWeight, slant=fSlant)
 	self.prefFontExampleBox.config(bg=bgColor)
 	self.prefFontExampleBox.tag_configure("exTsColor", foreground=tsClr, background=tsBgClr)
@@ -797,6 +831,10 @@ class MainGui(Tkinter.Frame):
 	userBg = self.getPreference('userBgColor', self.translateColor(self.userList.cget('bg')))
 	self.prefUserBgColorEx.config(background=userBg)
 	self.prefUserListEx.config(fg=userFg, bg=userBg, disabledforeground=userFg)
+	tsFmt = self.getPreference('timestampFormat')
+	self.prefTsFmtBox.set(tsFmt)
+	self.prefTsFmtEx.config(text=time.strftime(tsFmt))
+	self.prefTsShow.set(int(self.getPreference('showTimestamps')))
 #####
 ##
 	#set preferences window control state
@@ -1085,9 +1123,23 @@ class MainGui(Tkinter.Frame):
 	clr = self.chooseColor("User List Background", 'userBgColor', clr, self.prefUserBgColorEx)
 	self.prefUserListEx.config(bg=clr)
 
+    def updateTsFormat(self, *args, **kwargs):
+	newFmt = self.prefTsFmt.get()
+	try:
+	    example = time.strftime(newFmt)
+	except ValueError:
+	    return
+	self.prefsToSet['timestampFormat'] = newFmt
+	self.prefTsFmtEx.config(text=example)
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
+    def updateTsShow(self, *args, **kwargs):
+	self.prefsToSet['showTimestamps'] = bool(self.prefTsShow.get())
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
 #####
 ##
-    #preferences window handlers
+    #other preferences window handlers
 ##
 #####
 
