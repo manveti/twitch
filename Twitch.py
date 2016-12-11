@@ -1,3 +1,4 @@
+import httplib
 import json
 import re
 import select
@@ -135,30 +136,12 @@ def getApi(path, oauth=None):
 	oauth = getOauth()
     if ((path) and (path[0] != "/")):
 	path = "/" + path
-    msg = "GET %s%s HTTP/1.1\r\nAccept: application/vnd.twitchtv.v5+json\r\nAuthorization: OAuth %s\r\n\r\n"
-    msg = msg % (API_URL_BASE, path, oauth)
-    conn = ssl.SSLSocket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
-    conn.connect(API_ADDR)
-    conn.send(msg)
-    resp = ""
-    bodyStart = None
-    bodyLength = None
-    while (True):
-	s = conn.recv(BUF_SIZE)
-	if (not s):
-	    break
-	resp += s
-	if (not bodyStart):
-	    idx = resp.find("\r\n\r\n")
-	    if (idx >= 0):
-		bodyStart = idx + 4
-	if ((bodyStart) and (not bodyLength)):
-	    m = LENGTH_EXP.search(resp)
-	    if (m):
-		bodyLength = int(m.group('len'))
-	if ((bodyLength) and (len(resp) >= bodyStart + bodyLength)):
-	    break
-    resp = resp[bodyStart : (bodyStart + bodyLength)]
+    url = "%s%s" % (API_URL_BASE, path)
+    headers = {'Accept': "application/vnd.twitchtv.v5+json", 'Authorization': "OAuth %s" % oauth}
+    conn = httplib.HTTPSConnection(API_ADDR[0])
+    conn.request("GET", url, headers=headers)
+    httpResp = conn.getresponse()
+    resp = httpResp.read()
     return json.loads(resp)
 
 class ChatCallbacks:
@@ -179,7 +162,7 @@ class ChatCallbacks:
 	pass
 
 class Chat:
-    def __init__(self, callbacks, oauth=None, latinThresh=1):
+    def __init__(self, callbacks, oauth=None, latinThresh=1, userHint=None, displayHint=None):
 	if (not oauth):
 	    oauth = getOauth()
 
@@ -187,9 +170,16 @@ class Chat:
 	self.oauth = oauth
 	self.latinThresh = latinThresh
 
-	userInfo = getApi("/user", self.oauth)
-	self.userName = userInfo.get('name')
-	self.displayName = userInfo.get('display_name', self.userName)
+	try:
+	    userInfo = getApi("/user", self.oauth)
+	    self.userName = userInfo.get('name')
+	    self.displayName = userInfo.get('display_name', self.userName)
+	except ValueError:
+	    self.userName = userHint
+	    if (displayHint):
+		self.displayName = displayHint
+	    else:
+		self.displayName = userHint
 
 	self.socket = None
 	self.running = False
