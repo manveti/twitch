@@ -3,6 +3,7 @@
 import base64
 import cPickle
 import os.path
+import re
 import shelve
 import threading
 import Tkinter
@@ -45,6 +46,8 @@ ACTION_PREFIX = "%cACTION " % 1
 ACTION_SUFFIX = "%c" % 1
 
 CHAT_POPULATE_INTERVAL = 0.1
+
+PROMPT_EXP = re.compile("%[(](?P<name>[^)]+)[)]s")
 
 
 def getColorBrightness(c):
@@ -232,6 +235,7 @@ class MainGui(Tkinter.Frame):
 	self.prefsToSet = {}
 	self.macrosMenus = []
 	self.curMacro = ()
+	self.curMacroPrompts = []
 
 	self.chatBoxLock = threading.Lock()
 	self.userListLock = threading.Lock()
@@ -998,12 +1002,25 @@ class MainGui(Tkinter.Frame):
 	self.macrosWin.lift()
 
     def executeMacro(self, format, prompts):
-#####
-##
-	pass
-	print "macro: '%s', %s"%(format,prompts)
-##
-######
+	if ((not self.chat) or (not self.curChannel) or (not self.channels.has_key(self.curChannel))):
+	    return
+	query = []
+	for (promptName, promptDict) in prompts:
+	    if ((promptDict['type'] == Tkx.TYPE_LIST) and (promptDict.get('values') == "users")):
+		promptDict = promptDict.copy()
+		promptDict['values'] = self.getSortedUsers(self.curChannel)
+	    query.append(promptDict)
+	res = Tkx.askcompound("Macro Arguments", query)
+	if ((not res) or (len(res) != len(prompts))):
+	    return
+	args = {}
+	for i in xrange(len(prompts)):
+	    args[prompts[i][0]] = res[i]
+	s = format % args
+	self.inputHistory.append(s)
+	self.inputHistory = self.inputHistory[-self.preferences.get('maxInputHistory'):]
+	self.inputHistoryPos = len(self.inputHistory)
+	self.chat.send(self.curChannel, s)
 
     def channelTabChanged(self, e=None):
 	tabId = self.channelTabs.select()
@@ -1510,8 +1527,14 @@ class MainGui(Tkinter.Frame):
 	    macroBody = self.macroDefBox.get("1.0", Tkinter.END).strip()
 #####
 ##
+	    outstanding = set(PROMPT_EXP.findall(macroBody))
 	    prompts = []
-	    #deal with prompts
+	    for prompt in self.curMacroPrompts:
+		if (prompt[0] in outstanding):
+		    outstanding.remove(prompt[0])
+		    prompts.append(prompt)
+	    for promptName in outstanding:
+		prompts.append((promptName, {'prompt': promptName, 'type': Tkx.TYPE_STRING}))
 ##
 #####
 	    handler = lambda f=macroBody, p=prompts: self.executeMacro(f, p)
@@ -1521,29 +1544,80 @@ class MainGui(Tkinter.Frame):
 	self.preferences['macros'] = macros
 	self.savePreferences()
 
-#####
-##
     def macroDefCopy(self):
 	(macros, parent, parentMen) = self.getCurMacroParent()
 	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
 	    return
+#####
+##
 	macro = parent[self.curMacro[-1]]
 	pass
 	#copy macro or menu
+##
+#####
 
     def macroPromptIns(self):
 	(macros, parent, parentMen) = self.getCurMacroParent()
 	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
 	    return
 	macro = parent[self.curMacro[-1]]
-	pass
-	#insert new prompt into macro
+	if (len(macro) != 3):
+	    return
+	query = [{'prompt': "Name", 'type': Tkx.TYPE_STRING},
+		{'prompt': "Prompt", 'type': Tkx.TYPE_STRING},
+		{'prompt': "Type", 'type': Tkx.TYPE_LIST, 'readonly': True,
+			'values': ["string", "user", "integer", "float"], 'initialvalue': "string"},
+		{'prompt': "Default", 'type': Tkx.TYPE_STRING},
+		{'prompt': "Allow Custom Username", 'type': Tkx.TYPE_BOOL},
+		{'prompt': "Min", 'type': Tkx.TYPE_FLOAT},
+		{'prompt': "Enforce Min", 'type': Tkx.TYPE_BOOL},
+		{'prompt': "Max", 'type': Tkx.TYPE_FLOAT},
+		{'prompt': "Enforce Max", 'type': Tkx.TYPE_BOOL},
+		{'prompt': "Step", 'type': Tkx.TYPE_FLOAT, 'initialvalue': 1}]
+	res = Tkx.askcompound("Prompt Config", query, parent=self.macrosWin)
+	if (not res):
+	    return
+	promptQuery = {'prompt': res[1]}
+	if (res[2] == "string"):
+	    promptQuery['type'] = Tkx.TYPE_STRING
+	elif (res[2] == "user"):
+	    promptQuery['type'] = Tkx.TYPE_LIST
+	    promptQuery['values'] = "users"
+	    promptQuery['readonly'] = not res[4]
+	elif (res[2] == "integer"):
+	    promptQuery['type'] = Tkx.TYPE_INT
+	    if (res[6]):
+		promptQuery['min'] = int(res[5])
+	    if (res[8]):
+		promptQuery['min'] = int(res[7])
+	    promptQuery['step'] = int(res[9])
+	elif (res[2] == "float"):
+	    promptQuery['type'] = Tkx.TYPE_FLOAT
+	    if (res[6]):
+		promptQuery['min'] = res[5]
+	    if (res[8]):
+		promptQuery['min'] = res[7]
+	    promptQuery['step'] = res[9]
+	if (res[3]):
+	    promptQuery['initialvalue'] = res[3]
+	prompt = (res[0], promptQuery)
+#####
+##
+	#figure out an appropriate place to insert prompt text and entry
+	self.macroDefBox.insert(Tkinter.END, "%%(%s)s" % prompt[0])
+	self.curMacroPrompts.append(prompt)
+##
+#####
 
     def macroPromptEdit(self):
 	(macros, parent, parentMen) = self.getCurMacroParent()
 	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
 	    return
+#####
+##
 	macro = parent[self.curMacro[-1]]
+	if (len(macro) != 3):
+	    return
 	pass
 	#edit prompt selected in macro
 ##
@@ -1620,6 +1694,7 @@ class MainGui(Tkinter.Frame):
 
     def macroTreeDeselect(self):
 	self.curMacro = ()
+	self.curMacroPrompts = []
 	self.macroTreeUpBut.config(state=Tkinter.DISABLED)
 	self.macroTreeDownBut.config(state=Tkinter.DISABLED)
 	self.macroTreeOutBut.config(state=Tkinter.DISABLED)
@@ -1656,6 +1731,7 @@ class MainGui(Tkinter.Frame):
 	self.macroDefUpdateBut.config(state=Tkinter.NORMAL)
 	self.macroDefCopyBut.config(state=Tkinter.NORMAL)
 	if (len(macro) == 3):
+	    self.curMacroPrompts = macro[2][:]
 	    self.macroPromptInsBut.config(state=Tkinter.NORMAL)
 	    self.macroPromptEditBut.config(state=Tkinter.NORMAL)
 	    self.macroDefBox.config(state=Tkinter.NORMAL)
