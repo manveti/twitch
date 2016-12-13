@@ -230,16 +230,22 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	self.prefsToSet = {}
+	self.curMacro = ()
 
 	self.chatBoxLock = threading.Lock()
 	self.userListLock = threading.Lock()
 
 	self.accountWin = None
 	self.preferencesWin = None
+	self.favoritesWin = None
+	self.macrosWin = None
 
 	self.master.title("ChatVeti")
 	self.menuBar = Tkinter.Menu(self)
 	master.config(menu=self.menuBar)
+
+	ttk.Style().configure("TCombobox", fieldbackground="SystemWindow")
+	ttk.Style().configure("Treeview", fieldbackground="SystemWindow")
 
 	# file menu
 	self.fileMen = Tkinter.Menu(self.menuBar, tearoff=False)
@@ -282,11 +288,13 @@ class MainGui(Tkinter.Frame):
 	    self.favoritesMen.add_command(label=channel, command=lambda c=channel: self.doChannelOpen(c))
 	self.menuBar.add_cascade(label="Favorites", menu=self.favoritesMen)
 
-#####
-##
-	#macros menu (edit macros..., -, macro1, macro2, ...)
-##
-#####
+	# macros menu
+	self.macrosMen = Tkinter.Menu(self.menuBar, tearoff=False)
+	self.macrosMen.add_command(label="Edit Macros...", command=self.editMacros)
+	self.macrosMen.add_separator()
+	self.macrosMenus = []
+	self.populateMacrosMenu(self.macrosMen, self.macrosMenus, self.preferences.get('macros', []))
+	self.menuBar.add_cascade(label="Macros", menu=self.macrosMen)
 
 	self.panes = Tkinter.PanedWindow(self, sashrelief=Tkinter.GROOVE)
 
@@ -890,6 +898,105 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 
+    def editMacros(self):
+	if (not self.macrosWin):
+	    self.macrosWin = Tkinter.Toplevel()
+	    self.macrosWin.protocol("WM_DELETE_WINDOW", self.macrosWin.withdraw)
+	    self.macrosWin.title("Macros")
+	    self.macrosPanes = Tkinter.PanedWindow(self.macrosWin, sashrelief=Tkinter.GROOVE)
+	    self.macroTreePane = Tkinter.Frame(self.macrosPanes)
+	    self.macroTreeGrid = Tkinter.Frame(self.macroTreePane)
+	    self.macroTree = ttk.Treeview(self.macroTreeGrid, selectmode="browse", show="tree")
+	    self.macroTree.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macroTreeVScroll = Tkinter.Scrollbar(self.macroTreeGrid, command=self.macroTree.yview)
+	    self.macroTreeVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macroTreeHScroll = Tkinter.Scrollbar(self.macroTreeGrid, orient=Tkinter.HORIZONTAL,
+							command=self.macroTree.xview)
+	    self.macroTreeHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.macroTree.configure(xscrollcommand=self.macroTreeHScroll.set,
+				    yscrollcommand=self.macroTreeVScroll.set)
+	    self.macroTreeGrid.columnconfigure(0, weight=1)
+	    self.macroTreeGrid.rowconfigure(0, weight=1)
+	    self.macroTreeGrid.grid(row=0, column=0, columnspan=2,
+				    sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macroTreeUpBut = Tkinter.Button(self.macroTreePane, text="Move Up", command=self.macroTreeUp,
+						    state=Tkinter.DISABLED)
+	    self.macroTreeUpBut.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroTreeDownBut = Tkinter.Button(self.macroTreePane, text="Move Down", command=self.macroTreeDown,
+						    state=Tkinter.DISABLED)
+	    self.macroTreeDownBut.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroTreeOutBut = Tkinter.Button(self.macroTreePane, text="Move Out", command=self.macroTreeOut,
+						    state=Tkinter.DISABLED)
+	    self.macroTreeOutBut.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroTreeInBut = Tkinter.Button(self.macroTreePane, text="Move In", command=self.macroTreeIn,
+						    state=Tkinter.DISABLED)
+	    self.macroTreeInBut.grid(row=2, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroTreePane.columnconfigure(0, weight=1)
+	    self.macroTreePane.columnconfigure(1, weight=1)
+	    self.macroTreePane.rowconfigure(0, weight=1)
+	    self.macrosPanes.add(self.macroTreePane, stretch="always")
+	    self.macroDefPane = Tkinter.Frame(self.macrosPanes)
+	    macroDefNameGrid = Tkinter.Frame(self.macroDefPane)
+	    self.macroDefNameLbl = Tkinter.Label(macroDefNameGrid, text="Name:")
+	    self.macroDefNameLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.macroDefNameBox = Tkinter.Entry(macroDefNameGrid, state=Tkinter.DISABLED)
+	    self.macroDefNameBox.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroDefUpdateBut = Tkinter.Button(macroDefNameGrid, text="Update", command=self.macroDefUpdate,
+						    state=Tkinter.DISABLED)
+	    self.macroDefUpdateBut.grid(row=0, column=2, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroDefCopyBut = Tkinter.Button(macroDefNameGrid, text="Copy", command=self.macroDefCopy,
+						    state=Tkinter.DISABLED)
+	    self.macroDefCopyBut.grid(row=0, column=3, sticky=(Tkinter.W, Tkinter.E))
+	    macroDefNameGrid.columnconfigure(1, weight=1)
+	    macroDefNameGrid.grid(row=0, column=0, columnspan=6,
+				    sticky=(Tkinter.E, Tkinter.W, Tkinter.N, Tkinter.S))
+	    self.macroDefBodyLbl = Tkinter.Label(self.macroDefPane, text="Body:")
+	    self.macroDefBodyLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.macroPromptInsBut = Tkinter.Button(self.macroDefPane, text="Insert Prompt",
+						    command=self.macroPromptIns, state=Tkinter.DISABLED)
+	    self.macroPromptInsBut.grid(row=1, column=2, sticky=Tkinter.E)
+	    self.macroPromptEditBut = Tkinter.Button(self.macroDefPane, text="Edit Prompt",
+						    command=self.macroPromptEdit, state=Tkinter.DISABLED)
+	    self.macroPromptEditBut.grid(row=1, column=3, sticky=(Tkinter.E, Tkinter.W))
+	    self.macroDefGrid = Tkinter.Frame(self.macroDefPane)
+	    self.macroDefBox = Tkinter.Text(self.macroDefGrid, wrap=Tkinter.WORD, width=40, height=3,
+					    state=Tkinter.DISABLED)
+	    self.macroDefBox.grid(row=0, column=0, sticky=(Tkinter.E, Tkinter.W, Tkinter.N, Tkinter.S))
+	    self.macroDefVScroll = Tkinter.Scrollbar(self.macroDefGrid, command=self.macroDefBox.yview)
+	    self.macroDefVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macroDefBox.configure(yscrollcommand=self.macroDefVScroll.set)
+	    self.macroDefGrid.columnconfigure(0, weight=1)
+	    self.macroDefGrid.rowconfigure(0, weight=1)
+	    self.macroDefGrid.grid(row=2, column=0, columnspan=4,
+				    sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macroDefDelBut = Tkinter.Button(self.macroDefPane, text="Delete", command=self.macroDefDel,
+						    state=Tkinter.DISABLED)
+	    self.macroDefDelBut.grid(row=3, column=0, pady=3, sticky=Tkinter.W)
+	    self.macroMenuAddBut = Tkinter.Button(self.macroDefPane, text="New Menu", command=self.macroMenuAdd)
+	    self.macroMenuAddBut.grid(row=3, column=2, pady=3, sticky=(Tkinter.W, Tkinter.E))
+	    self.macroMacroAddBut = Tkinter.Button(self.macroDefPane, text="New Macro", command=self.macroMacroAdd)
+	    self.macroMacroAddBut.grid(row=3, column=3, pady=3, sticky=(Tkinter.W, Tkinter.E))
+	    self.macrosDoneBut = Tkinter.Button(self.macroDefPane, text="Done", command=self.macrosWin.withdraw)
+	    self.macrosDoneBut.grid(row=4, column=3, sticky=(Tkinter.E, Tkinter.S))
+	    self.macroDefPane.columnconfigure(1, weight=1)
+	    self.macroDefPane.rowconfigure(2, weight=1)
+	    self.macrosPanes.add(self.macroDefPane, stretch="always")
+	    self.macrosPanes.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.macrosWin.columnconfigure(0, weight=1)
+	    self.macrosWin.rowconfigure(0, weight=1)
+	    def populateMacroTree(macros, prefix=()):
+		prefixKey = ".".join(map(str, prefix))
+		for i in xrange(len(macros)):
+		    path = prefix + (i,)
+		    pathKey = ".".join(map(str, path))
+		    self.macroTree.insert(prefixKey, Tkinter.END, pathKey, text=macros[i][0])
+		    if (len(macros[i]) == 2):
+			populateMacroTree(macros[i][1], path)
+	    populateMacroTree(self.preferences.get('macros', []))
+	    self.macroTree.bind("<<TreeviewSelect>>", self.macroTreeSelect)
+	self.macrosWin.state(newstate=Tkinter.NORMAL)
+	self.macrosWin.lift()
+
 #####
 ##
     #macros menu handlers
@@ -1345,6 +1452,178 @@ class MainGui(Tkinter.Frame):
 	    self.populateChat(self.channels[self.curChannel]['log'])
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
 
+#####
+##
+    #favorites window handlers
+##
+#####
+
+#####
+##
+    def macroTreeUp(self):
+	pass
+	#move macro or menu up in tree and list
+
+    def macroTreeDown(self):
+	pass
+	#move macro or menu down in tree and list
+
+    def macroTreeOut(self):
+	pass
+	#move macro or menu up out of submenu
+
+    def macroTreeIn(self):
+	pass
+	#move macro or menu down into submenu
+
+    def macroDefUpdate(self):
+	pass
+	#update macro or menu
+
+    def macroDefCopy(self):
+	pass
+	#copy macro or menu
+
+    def macroPromptIns(self):
+	pass
+	#insert new prompt into macro
+
+    def macroPromptEdit(self):
+	pass
+	#edit prompt selected in macro
+##
+#####
+
+    def macroDefDel(self):
+	if ((not self.curMacro) or (self.curMacro[-1] < 0)):
+	    return
+	(macros, parent) = self.getCurMacroParent()
+	if (self.curMacro[-1] >= len(parent)):
+	    return
+#####
+##
+	#prompt to confirm
+##
+#####
+	itemKey = ".".join(map(str, self.curMacro))
+	parent.pop(self.curMacro[-1])
+	self.macroTreeDeselect()
+	self.preferences['macros'] = macros
+	self.savePreferences()
+#####
+##
+	#menu
+##
+#####
+	self.macroTree.delete(itemKey)
+
+    def macroMenuAdd(self):
+	self.macroItemAdd("macro menu", ([],))
+
+    def macroMacroAdd(self):
+	self.macroItemAdd("macro", ("", []))
+
+    def macroItemAdd(self, itemType, itemBody):
+	itemName = tkSimpleDialog.askstring("Name", "Enter name for new %s" % itemType, parent=self.macrosWin)
+	if (not itemName):
+	    return
+	(macros, parent) = self.getCurMacroParent()
+	parentPath = self.curMacro[:-1]
+	if ((self.curMacro) and (self.curMacro[-1] >= 0) and (self.curMacro[-1] < len(parent))):
+	    if (len(parent[self.curMacro[-1]]) == 2):
+		parent = parent[self.curMacro[-1]][1]
+		parentPath = parentPath + (self.curMacro[-1],)
+#####
+##
+#	    maybe an else to insert at self.curMacro[-1]+1 instead of end
+##
+#####
+	itemPath = parentPath + (len(parent),)
+	parentKey = ".".join(map(str, parentPath))
+	itemKey = ".".join(map(str, itemPath))
+	parent.append((itemName,) + itemBody)
+	self.preferences['macros'] = macros
+	self.savePreferences()
+	self.macroTree.insert(parentKey, Tkinter.END, itemKey, text=itemName)
+#####
+##
+	#menu
+##
+#####
+	self.macroTree.see(itemKey)
+	self.macroTree.focus(itemKey)
+	self.macroTree.selection_set(itemKey)
+
+    def macroTreeDeselect(self):
+	self.curMacro = ()
+	self.macroTreeUpBut.config(state=Tkinter.DISABLED)
+	self.macroTreeDownBut.config(state=Tkinter.DISABLED)
+	self.macroTreeOutBut.config(state=Tkinter.DISABLED)
+	self.macroTreeInBut.config(state=Tkinter.DISABLED)
+	self.macroDefNameBox.delete(0, Tkinter.END)
+	self.macroDefNameBox.config(state=Tkinter.DISABLED)
+	self.macroDefUpdateBut.config(state=Tkinter.DISABLED)
+	self.macroDefCopyBut.config(state=Tkinter.DISABLED)
+	self.macroPromptInsBut.config(state=Tkinter.DISABLED)
+	self.macroPromptEditBut.config(state=Tkinter.DISABLED)
+	self.macroDefBox.delete("1.0", Tkinter.END)
+	self.macroDefBox.config(state=Tkinter.DISABLED)
+	self.macroDefDelBut.config(state=Tkinter.DISABLED)
+
+    def macroTreeSelect(self, *args, **kwargs):
+	self.macroTreeDeselect()
+	selected = self.macroTree.focus()
+	if (not hasattr(selected, 'split')):
+	    return
+	try:
+	    self.curMacro = tuple(map(int, selected.split(".")))
+	except ValueError:
+	    return
+	(macros, parent) = self.getCurMacroParent()
+	macro = parent[self.curMacro[-1]]
+	self.macroTreeUpBut.config(state=Tkinter.NORMAL)
+	self.macroTreeDownBut.config(state=Tkinter.NORMAL)
+	self.macroTreeOutBut.config(state=Tkinter.NORMAL)
+	self.macroTreeInBut.config(state=Tkinter.NORMAL)
+	self.macroDefNameBox.config(state=Tkinter.NORMAL)
+	self.macroDefNameBox.insert(Tkinter.END, macro[0])
+	self.macroDefUpdateBut.config(state=Tkinter.NORMAL)
+	self.macroDefCopyBut.config(state=Tkinter.NORMAL)
+	if (len(macro) == 3):
+	    self.macroPromptInsBut.config(state=Tkinter.NORMAL)
+	    self.macroPromptEditBut.config(state=Tkinter.NORMAL)
+	    self.macroDefBox.config(state=Tkinter.NORMAL)
+	    self.macroDefBox.insert(Tkinter.END, macro[1])
+	self.macroDefDelBut.config(state=Tkinter.NORMAL)
+
+#####
+##
+    #other macro window handlers
+##
+#####
+
+    def populateMacrosMenu(self, menu, menuLst, macros):
+	for macro in macros:
+	    if (len(macro) == 2):
+		subMen = Tkinter.Menu(menu, tearoff=False)
+		subLst = []
+		self.populateMacrosMenu(subMen, subLst, macro[1])
+		menuLst.append((subMen, subLst))
+		menu.add_cascade(label=macro[0], menu=subMen)
+	    else:
+		menuLst.append(None)
+#####
+##
+		menu.add_command(label=macro[0], command=lambda:None)
+	    #macro is (name, format, prompts)
+	    #  prompt is (optional name, prompt string, type, optional default, optional type args (e.g. min/max))
+	    #    prompt should probably be dictionary because of all the optional values
+	    #    type is one of user, string, integer, float
+	    #macro list is (name, children)
+
+##
+#####
+
     def getPreference(self, pref, default=None):
 	return self.preferences.get(pref, DEFAULT_PREFERENCES.get(pref, default))
 
@@ -1362,7 +1641,13 @@ class MainGui(Tkinter.Frame):
 ######
 	if (not self.chat):
 	    latinThresh = self.getPreference('latinThreshold')
-	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth, latinThresh)
+	    userHint = self.getPreference('userName')
+	    displayHint = self.getPreference('userDisplay')
+	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth, latinThresh, userHint, displayHint)
+	    if (self.chat.userName):
+		self.preferences['userName'] = self.chat.userName
+	    if (self.chat.displayName):
+		self.preferences['userDisplay'] = self.chat.displayName
 	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
@@ -1551,6 +1836,15 @@ class MainGui(Tkinter.Frame):
 	    self.chatTags[color].remove(channel)
 	    if (not self.chatTags[color]):
 		self.chatBox.tag_delete(color)
+
+    def getCurMacroParent(self):
+	macros = self.preferences.get('macros', [])
+	parent = macros
+	for i in self.curMacro[:-1]:
+	    if ((i < 0) or (i >= len(parent)) or (len(parent[i]) != 2) or (type(parent[i][1]) != type([]))):
+		return
+	    parent = parent[i][1]
+	return (macros, parent)
 
 
 mainWin = MainGui(Tix.Tk())
