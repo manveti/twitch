@@ -230,6 +230,7 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	self.prefsToSet = {}
+	self.macrosMenus = []
 	self.curMacro = ()
 
 	self.chatBoxLock = threading.Lock()
@@ -292,7 +293,6 @@ class MainGui(Tkinter.Frame):
 	self.macrosMen = Tkinter.Menu(self.menuBar, tearoff=False)
 	self.macrosMen.add_command(label="Edit Macros...", command=self.editMacros)
 	self.macrosMen.add_separator()
-	self.macrosMenus = []
 	self.populateMacrosMenu(self.macrosMen, self.macrosMenus, self.preferences.get('macros', []))
 	self.menuBar.add_cascade(label="Macros", menu=self.macrosMen)
 
@@ -997,9 +997,11 @@ class MainGui(Tkinter.Frame):
 	self.macrosWin.state(newstate=Tkinter.NORMAL)
 	self.macrosWin.lift()
 
+    def executeMacro(self, format, prompts):
 #####
 ##
-    #macros menu handlers
+	pass
+	print "macro: '%s', %s"%(format,prompts)
 ##
 ######
 
@@ -1461,77 +1463,137 @@ class MainGui(Tkinter.Frame):
 #####
 ##
     def macroTreeUp(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
 	pass
 	#move macro or menu up in tree and list
 
     def macroTreeDown(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
 	pass
 	#move macro or menu down in tree and list
 
     def macroTreeOut(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
 	pass
 	#move macro or menu up out of submenu
 
     def macroTreeIn(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
 	pass
 	#move macro or menu down into submenu
+##
+#####
 
     def macroDefUpdate(self):
-	pass
-	#update macro or menu
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
+	macro = parent[self.curMacro[-1]]
+	itemName = self.macroDefNameBox.get()
+	if (not itemName):
+	    return
+	offset = 0
+	if (parentMen[0] == self.macrosMen):
+	    offset = 2
+	parentMen[0].entryconfigure(self.curMacro[-1] + offset, label=itemName)
+	if (len(macro) == 2):
+	    macro = (itemName, macro[1])
+	else:
+	    macroBody = self.macroDefBox.get("1.0", Tkinter.END).strip()
+#####
+##
+	    prompts = []
+	    #deal with prompts
+##
+#####
+	    handler = lambda f=macroBody, p=prompts: self.executeMacro(f, p)
+	    parentMen[0].entryconfigure(self.curMacro[-1] + offset, command=handler)
+	    macro = (itemName, macroBody, prompts)
+	parent[self.curMacro[-1]] = macro
+	self.preferences['macros'] = macros
+	self.savePreferences()
 
+#####
+##
     def macroDefCopy(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
+	macro = parent[self.curMacro[-1]]
 	pass
 	#copy macro or menu
 
     def macroPromptIns(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
+	macro = parent[self.curMacro[-1]]
 	pass
 	#insert new prompt into macro
 
     def macroPromptEdit(self):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
+	    return
+	macro = parent[self.curMacro[-1]]
 	pass
 	#edit prompt selected in macro
 ##
 #####
 
     def macroDefDel(self):
-	if ((not self.curMacro) or (self.curMacro[-1] < 0)):
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen) or (self.curMacro[-1] >= len(parent))):
 	    return
-	(macros, parent) = self.getCurMacroParent()
-	if (self.curMacro[-1] >= len(parent)):
+	if (len(parent[self.curMacro[-1]]) == 2):
+	    confirmMsg = "Are you sure you want to delete this menu?"
+	else:
+	    confirmMsg = "Are you sure you want to delete this macro?"
+	if (not tkMessageBox.askyesno("Confirm", confirmMsg, parent=self.macrosWin)):
 	    return
-#####
-##
-	#prompt to confirm
-##
-#####
 	itemKey = ".".join(map(str, self.curMacro))
 	parent.pop(self.curMacro[-1])
+	offset = 0
+	if (parentMen[0] == self.macrosMen):
+	    offset = 2
+	parentMen[0].delete(self.curMacro[-1] + offset)
+	parentMen[1].pop(self.curMacro[-1])
 	self.macroTreeDeselect()
 	self.preferences['macros'] = macros
 	self.savePreferences()
-#####
-##
-	#menu
-##
-#####
 	self.macroTree.delete(itemKey)
 
     def macroMenuAdd(self):
-	self.macroItemAdd("macro menu", ([],))
+	self.macroItemAdd("macro menu", ([],), True)
 
     def macroMacroAdd(self):
-	self.macroItemAdd("macro", ("", []))
+	self.macroItemAdd("macro", ("", []), False)
 
-    def macroItemAdd(self, itemType, itemBody):
+    def macroItemAdd(self, itemType, itemBody, submenu=False):
 	itemName = tkSimpleDialog.askstring("Name", "Enter name for new %s" % itemType, parent=self.macrosWin)
 	if (not itemName):
 	    return
-	(macros, parent) = self.getCurMacroParent()
+	if (self.curMacro):
+	    (macros, parent, parentMen) = self.getCurMacroParent()
+	else:
+	    macros = self.preferences.get('macros', [])
+	    parent = macros
+	    parentMen = (self.macrosMen, self.macrosMenus)
+	if ((macros is None) or (parent is None) or (not parentMen)):
+	    return
 	parentPath = self.curMacro[:-1]
 	if ((self.curMacro) and (self.curMacro[-1] >= 0) and (self.curMacro[-1] < len(parent))):
 	    if (len(parent[self.curMacro[-1]]) == 2):
 		parent = parent[self.curMacro[-1]][1]
+		parentMen = parentMen[1][self.curMacro[-1]]
 		parentPath = parentPath + (self.curMacro[-1],)
 #####
 ##
@@ -1544,12 +1606,14 @@ class MainGui(Tkinter.Frame):
 	parent.append((itemName,) + itemBody)
 	self.preferences['macros'] = macros
 	self.savePreferences()
+	if (submenu):
+	    subMen = Tkinter.Menu(parentMen[0], tearoff=False)
+	    parentMen[0].add_cascade(label=itemName, menu=subMen)
+	    parentMen[1].append((subMen, []))
+	else:
+	    parentMen[0].add_command(label=itemName, command=lambda: None)
+	    parentMen[1].append(None)
 	self.macroTree.insert(parentKey, Tkinter.END, itemKey, text=itemName)
-#####
-##
-	#menu
-##
-#####
 	self.macroTree.see(itemKey)
 	self.macroTree.focus(itemKey)
 	self.macroTree.selection_set(itemKey)
@@ -1579,7 +1643,9 @@ class MainGui(Tkinter.Frame):
 	    self.curMacro = tuple(map(int, selected.split(".")))
 	except ValueError:
 	    return
-	(macros, parent) = self.getCurMacroParent()
+	(macros, parent, parentMen) = self.getCurMacroParent()
+	if ((macros is None) or (parent is None) or (not parentMen)):
+	    return
 	macro = parent[self.curMacro[-1]]
 	self.macroTreeUpBut.config(state=Tkinter.NORMAL)
 	self.macroTreeDownBut.config(state=Tkinter.NORMAL)
@@ -1614,7 +1680,7 @@ class MainGui(Tkinter.Frame):
 		menuLst.append(None)
 #####
 ##
-		menu.add_command(label=macro[0], command=lambda:None)
+		menu.add_command(label=macro[0], command=lambda f=macro[1], p=macro[2]: self.executeMacro(f, p))
 	    #macro is (name, format, prompts)
 	    #  prompt is (optional name, prompt string, type, optional default, optional type args (e.g. min/max))
 	    #    prompt should probably be dictionary because of all the optional values
@@ -1838,13 +1904,19 @@ class MainGui(Tkinter.Frame):
 		self.chatBox.tag_delete(color)
 
     def getCurMacroParent(self):
+	if ((not self.curMacro) or (self.curMacro[-1] < 0)):
+	    return (None, None, None)
 	macros = self.preferences.get('macros', [])
+	parentMen = (self.macrosMen, self.macrosMenus)
 	parent = macros
 	for i in self.curMacro[:-1]:
 	    if ((i < 0) or (i >= len(parent)) or (len(parent[i]) != 2) or (type(parent[i][1]) != type([]))):
-		return
+		return (None, None, None)
 	    parent = parent[i][1]
-	return (macros, parent)
+	    if ((i >= len(parentMen[1])) or (type(parentMen[1][i]) != type(())) or (not parentMen[1][i])):
+		return (None, None, None)
+	    parentMen = parentMen[1][i]
+	return (macros, parent, parentMen)
 
 
 mainWin = MainGui(Tix.Tk())
