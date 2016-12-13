@@ -225,8 +225,6 @@ class Chat:
 		charDict[c] = unicodedata.name(c, "").startswith("LATIN")
 	    return charDict[c]
 	def isLatin(s):
-	    if (not s):
-		return True
 	    if (type(s) != type(u"")):
 		s = s.decode("utf-8")
 	    return sum(1 for c in s if charIsLatin(c)) * self.latinThresh >= len(s)
@@ -279,8 +277,6 @@ class Chat:
 					    continue
 					emotes.append((int(locSplits[0]), int(locSplits[1]) + 1, emoteId))
 				continue
-		    if (not display):
-			display = user
 		    emotes.sort()
 		    if (not isLatin(display)):
 			display = "%s (%s)" % (display, user)
