@@ -84,6 +84,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	idx = userSort.index(user)
 	self.master.userListLock.acquire()
 	self.master.userList.insert(idx, user)
+	self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
 	self.master.userListLock.release()
 
     def usersJoined(self, channel, users):
@@ -102,6 +103,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.userList.delete(0, Tkinter.END)
 	for user in self.master.getSortedUsers(channel):
 	    self.master.userList.insert(Tkinter.END, user)
+	self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
 	self.master.userListLock.release()
 
     def userLeft(self, channel, user):
@@ -115,6 +117,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    idx = userSort.index(user)
 	    self.master.userListLock.acquire()
 	    self.master.userList.delete(idx)
+	    self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
 	    self.master.userListLock.release()
 	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
@@ -158,6 +161,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    userSort = self.master.getSortedUsers(channel)
 	    idx = userSort.index(user)
 	    self.master.userList.insert(idx, self.master.channels[channel]['users'][user].get('display', user))
+	    self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
 	    self.master.userListLock.release()
 	if (userColor):
 	    self.master.setupTag(channel, userColor)
@@ -364,6 +368,8 @@ class MainGui(Tkinter.Frame):
 
 	# users pane
 	self.userPane = Tkinter.Frame(self.panes)
+	self.userCountBox = Tkinter.Label(self.userPane, text="0 users")
+	self.userCountBox.grid(row=0, column=0, sticky=Tkinter.E)
 	self.userGrid = Tkinter.Frame(self.userPane)
 	kwargs = {'activestyle': "none"}
 	if (self.preferences.get('userColor')):
@@ -383,14 +389,14 @@ class MainGui(Tkinter.Frame):
 	self.userList.configure(xscrollcommand=self.userHScroll.set, yscrollcommand=self.userVScroll.set)
 	self.userGrid.columnconfigure(0, weight=1)
 	self.userGrid.rowconfigure(0, weight=1)
-	self.userGrid.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	self.userGrid.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 #####
 ##
 	#optional user admin area
 ##
 #####
 	self.userPane.columnconfigure(0, weight=1)
-	self.userPane.rowconfigure(0, weight=1)
+	self.userPane.rowconfigure(1, weight=1)
 	if (self.preferences.get('userPaneVisible')):
 	    self.panes.add(self.userPane, stretch="always")
 
@@ -508,6 +514,7 @@ class MainGui(Tkinter.Frame):
 	self.curChannel = channel
 	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
+	self.userCountBox.configure(text="0 users")
 	self.userListLock.release()
 	self.populateChat(log)
 
@@ -1037,6 +1044,7 @@ class MainGui(Tkinter.Frame):
 	self.channels[self.curChannel]['userLock'].acquire()
 	for user in self.getSortedUsers(self.curChannel):
 	    self.userList.insert(Tkinter.END, self.channels[self.curChannel]['users'][user].get('display',user))
+	self.userCountBox.configure(text="%s users" % len(self.channels[self.curChannel]['users']))
 	self.channels[self.curChannel]['userLock'].release()
 	self.userListLock.release()
 
@@ -1059,6 +1067,7 @@ class MainGui(Tkinter.Frame):
 	    self.chatBoxLock.release()
 	    self.userListLock.acquire()
 	    self.userList.delete(0, Tkinter.END)
+	    self.userCountBox.configure(text="0 users")
 	    self.userListLock.release()
 	self.removeTags(channel)
 
@@ -1798,6 +1807,7 @@ class MainGui(Tkinter.Frame):
 	self.chatBoxLock.release()
 	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
+	self.userCountBox.configure(text="0 users")
 	self.userListLock.release()
 	self.chat.join(channel)
 
