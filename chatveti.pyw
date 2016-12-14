@@ -488,7 +488,8 @@ class MainGui(Tkinter.Frame):
 	if (not log):
 	    tkMessageBox.showerror("Error", "Unable to load file.")
 	    return
-	channelDict = {'logPath': path, 'channelName': channelName, 'log': log, 'users': {}}
+	channelDict = {'logPath': path, 'channelName': channelName, 'log': log,
+			'users': {}, 'userLock': threading.Lock()}
 #####
 ##
 	#channel=something to identify tab as a log of channel channelName from date log[0][1]
@@ -1022,7 +1023,7 @@ class MainGui(Tkinter.Frame):
 	self.inputHistoryPos = len(self.inputHistory)
 	self.chat.send(self.curChannel, s)
 
-    def channelTabChanged(self, e=None):
+    def channelTabChanged(self, *args, **kwargs):
 	tabId = self.channelTabs.select()
 	if (not tabId):
 	    return
@@ -1525,8 +1526,6 @@ class MainGui(Tkinter.Frame):
 	    macro = (itemName, macro[1])
 	else:
 	    macroBody = self.macroDefBox.get("1.0", Tkinter.END).strip()
-#####
-##
 	    outstanding = set(PROMPT_EXP.findall(macroBody))
 	    prompts = []
 	    for prompt in self.curMacroPrompts:
@@ -1535,8 +1534,6 @@ class MainGui(Tkinter.Frame):
 		    prompts.append(prompt)
 	    for promptName in outstanding:
 		prompts.append((promptName, {'prompt': promptName, 'type': Tkx.TYPE_STRING}))
-##
-#####
 	    handler = lambda f=macroBody, p=prompts: self.executeMacro(f, p)
 	    parentMen[0].entryconfigure(self.curMacro[-1] + offset, command=handler)
 	    macro = (itemName, macroBody, prompts)
@@ -1876,60 +1873,61 @@ class MainGui(Tkinter.Frame):
 	self.chatBox.delete("1.0", Tkinter.END)
 	self.chatToPopulate = log[:]
 	self.chatBoxLock.release()
-	if (not self.chatPopulateThread):
-	    self.chatPopulateThread = threading.Thread(target=self.populateChatThreadHandler)
-	    self.chatPopulateThread.daemon = True
-	    self.chatPopulateThread.start()
+	if (self.chatPopulateThread is None):
+	    self.chatPopulateThread = self.after(0, self.populateChatThreadHandler)
 
     def populateChatThreadHandler(self):
-	while (True):
-	    if (not self.chatToPopulate):
-		time.sleep(CHAT_POPULATE_INTERVAL)
-		continue
-	    self.chatBoxLock.acquire()
-	    if (not self.chatToPopulate):
-		self.chatBoxLock.release()
-		continue
-	    logLine = self.chatToPopulate.pop()
-	    if (logLine[0] != EVENT_MSG):
-		self.chatBoxLock.release()
-		continue
-	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
-	    if (userColor):
-		self.setupTag(self.curChannel, userColor)
-	    tsTags = []
-	    userTags = []
-	    msgTags = []
-	    if (userColor):
-		userTags.append(userColor)
-	    if (self.useTsTag):
-		tsTags.append("tsColor")
-	    if (self.useMsgTag):
-		msgTags.append("msgColor")
-	    if (self.useFontTag):
-		tsTags.append("msgFont")
-		userTags.append("msgFont")
-		msgTags.append("msgFont")
-	    tsTags = tuple(tsTags)
-	    userTags = tuple(userTags)
-	    msgTags = tuple(msgTags)
-#####
-##
-	    #deal with emotes
-	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
-		msgTags = userTags
-		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
-	    else:
-		msg = ": %s\n" % msg
-	    self.chatBox.insert("1.0", msg, msgTags)
-	    #deal with badges
-	    self.chatBox.insert("1.0", userDisplay, userTags)
-	    if (self.preferences.get('showTimestamps')):
-		tsFmt = self.getPreference('timestampFormat')
-		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
-##
-#####
+	if (not self.chatToPopulate):
+	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
+	    return
+	self.chatBoxLock.acquire()
+	if (not self.chatToPopulate):
 	    self.chatBoxLock.release()
+	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
+	    return
+	logLine = self.chatToPopulate.pop()
+	if (logLine[0] != EVENT_MSG):
+	    self.chatBoxLock.release()
+	    self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
+	    return
+	(e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
+	if (userColor):
+	    self.setupTag(self.curChannel, userColor)
+	tsTags = []
+	userTags = []
+	msgTags = []
+	if (userColor):
+	    userTags.append(userColor)
+	if (self.useTsTag):
+	    tsTags.append("tsColor")
+	if (self.useMsgTag):
+	    msgTags.append("msgColor")
+	if (self.useFontTag):
+	    tsTags.append("msgFont")
+	    userTags.append("msgFont")
+	    msgTags.append("msgFont")
+	tsTags = tuple(tsTags)
+	userTags = tuple(userTags)
+	msgTags = tuple(msgTags)
+#####
+##
+	#deal with emotes
+	if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+	    msgTags = userTags
+	    msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	else:
+	    msg = ": %s\n" % msg
+	self.chatBox.insert("1.0", msg, msgTags)
+	#deal with badges
+	self.chatBox.insert("1.0", userDisplay, userTags)
+	if (self.preferences.get('showTimestamps')):
+	    tsFmt = self.getPreference('timestampFormat')
+	    self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+##
+#####
+	self.chatBox.see(Tkinter.END)
+	self.chatBoxLock.release()
+	self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
 
     def doSearch(self, skip=False):
 	idx = Tkinter.INSERT
@@ -1963,7 +1961,10 @@ class MainGui(Tkinter.Frame):
 	needBg = True
 	if (not bgColor):
 	    needBg = False
-	    bgColor = self.translateColor(self.chatBox.cget('bg'))
+	    try:
+		bgColor = self.translateColor(self.chatBox.cget('bg'))
+	    except Tkinter.TclError:
+		bgColor = self.translateColor("SystemWindow")
 	adjustedBg = self.adjustHexColor(bgColor, color)
 	if (adjustedBg != bgColor):
 	    needBg = True
