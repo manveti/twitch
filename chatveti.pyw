@@ -409,6 +409,7 @@ class MainGui(Tkinter.Frame):
 #####
 	self.chatToPopulate = []
 	self.chatToPopulateReverse = []
+	self.usersToUpdate = []
 	if (self.chat):
 	    if (self.chat.callbacks):
 		self.chat.callbacks = Twitch.ChatCallbacks()
@@ -464,6 +465,7 @@ class MainGui(Tkinter.Frame):
 	self.channelTabs.select(len(self.channelOrder) - 1)
 	self.curChannel = channel
 	self.userListLock.acquire()
+	self.usersToUpdate = []
 	self.userList.delete(0, Tkinter.END)
 	self.userCountBox.configure(text="0 users")
 	self.userListLock.release()
@@ -991,6 +993,7 @@ class MainGui(Tkinter.Frame):
 	self.curChannel = self.channelOrder[idx]
 	self.populateChat(self.channels[self.curChannel]['log'])
 	self.userListLock.acquire()
+	self.usersToUpdate = []
 	self.userList.delete(0, Tkinter.END)
 	self.channels[self.curChannel]['userLock'].acquire()
 	for user in self.getSortedUsers(self.curChannel):
@@ -1940,7 +1943,8 @@ class MainGui(Tkinter.Frame):
 	if (len(self.usersToUpdate) > len(self.channels[self.curChannel]['users']) / 3):
 	    self.userList.delete(0, Tkinter.END)
 	    for user in self.getSortedUsers(self.curChannel):
-		self.userList.insert(Tkinter.END, user)
+		display = self.channels[self.curChannel]['users'][user].get('display', user)
+		self.userList.insert(Tkinter.END, display)
 	else:
 	    for (event, user, idx) in self.usersToUpdate:
 		if (event == EVENT_JOIN):
