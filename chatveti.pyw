@@ -48,6 +48,7 @@ ACTION_SUFFIX = "%c" % 1
 CHAT_POPULATE_INTERVAL = 0.1
 
 PROMPT_EXP = re.compile("%[(](?P<name>[^)]+)[)]s")
+USER_TOKEN_EXP = re.compile("\s+|@")
 
 
 def getColorBrightness(c):
@@ -300,6 +301,7 @@ class MainGui(Tkinter.Frame):
 	self.chatInputBox.bind("<Return>", self.submitChatInput)
 	self.chatInputBox.bind("<Up>", self.inputUpHistory)
 	self.chatInputBox.bind("<Down>", self.inputDownHistory)
+	self.chatInputBox.bind("<Key>", self.inputTabComplete)
 	self.chatInputBox.grid(row=2, column=1, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 #####
 ##
@@ -1120,6 +1122,41 @@ class MainGui(Tkinter.Frame):
 	    s = self.inputHistory[self.inputHistoryPos]
 	self.chatInputBox.delete(0, Tkinter.END)
 	self.chatInputBox.insert(0, s)
+
+    def inputTabComplete(self, e=None):
+	if (e.char != "\t"):
+	    return
+	if ((not self.curChannel) or (not self.channels.has_key(self.curChannel))):
+	    return "break"
+	s = self.chatInputBox.get()
+	if (not s):
+	    return "break"
+	idx = self.chatInputBox.index(Tkinter.INSERT)
+	if (idx <= 0):
+	    return "break"
+	s = s[:idx]
+	res = [0] + [m.end() for m in USER_TOKEN_EXP.finditer(s)]
+	if (not res):
+	    return "break"
+	prefix = s[res[-1]:].lower()
+	common = None
+	for user in self.channels[self.curChannel]['users'].keys():
+	    display = self.channels[self.curChannel]['users'][user].get('display', user)
+	    if (display.lower().startswith(prefix)):
+		nextChunk = display[len(prefix):]
+		if (common):
+		    for i in xrange(len(common)):
+			if ((i >= len(nextChunk)) or (nextChunk[i].lower() != common[i].lower())):
+			    common = common[:i]
+			    break
+		    if (not common):
+			return "break"
+		else:
+		    common = nextChunk
+	if (not common):
+	    return "break"
+	self.chatInputBox.insert(Tkinter.INSERT, common)
+	return "break"
 
 #####
 ##
