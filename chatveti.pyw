@@ -163,49 +163,11 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userList.insert(idx, self.master.channels[channel]['users'][user].get('display', user))
 	    self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
 	    self.master.userListLock.release()
-	if (userColor):
-	    self.master.setupTag(channel, userColor)
-	tsTags = []
-	userTags = []
-	msgTags = []
-	if (userColor):
-	    userTags.append(userColor)
-	if (self.master.useTsTag):
-	    tsTags.append("tsColor")
-	if (self.master.useMsgTag):
-	    msgTags.append("msgColor")
-	if (self.master.useFontTag):
-	    tsTags.append("msgFont")
-	    userTags.append("msgFont")
-	    msgTags.append("msgFont")
-	tsTags = tuple(tsTags)
-	userTags = tuple(userTags)
-	msgTags = tuple(msgTags)
 	self.master.chatBoxLock.acquire()
-	oldPos = self.master.chatBox.yview()
-	if (self.master.preferences.get('showTimestamps')):
-	    tsFmt = self.master.getPreference('timestampFormat')
-	    self.master.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
-#####
-##
-	#deal with badges
-##
-#####
-	self.master.chatBox.insert(Tkinter.END, userDisplay, userTags)
-#####
-##
-	#deal with emotes
-	if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
-	    msgTags = userTags
-	    msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
-	else:
-	    msg = ": %s\n" % msg
-	self.master.chatBox.insert(Tkinter.END, msg, msgTags)
-##
-#####
-	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
-	    self.master.chatBox.see(Tkinter.END)
+	self.master.chatToPopulate.append(logLine)
 	self.master.chatBoxLock.release()
+	if (self.master.chatPopulateThread is None):
+	    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 
 
 class MainGui(Tkinter.Frame):
@@ -219,6 +181,7 @@ class MainGui(Tkinter.Frame):
 	self.curChannel = None
 	self.chat = None
 	self.chatToPopulate = []
+	self.chatToPopulateReverse = []
 	self.chatPopulateThread = None
 	self.chatTags = {}
 	self.useTsTag = False
@@ -458,6 +421,7 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	self.chatToPopulate = []
+	self.chatToPopulateReverse = []
 	if (self.chat):
 	    if (self.chat.callbacks):
 		self.chat.callbacks = Twitch.ChatCallbacks()
@@ -1878,24 +1842,32 @@ class MainGui(Tkinter.Frame):
 		    retval[kw] = defaultAttrs[kw]
 	return retval
 
-    def populateChat(self, log):
+    def populateChat(self, log, reverse=True):
 	self.chatBoxLock.acquire()
 	self.chatBox.delete("1.0", Tkinter.END)
-	self.chatToPopulate = log[:]
+	if (reverse):
+	    self.chatToPopulateReverse = log[:]
+	else:
+	    self.chatToPopulate = log[:]
 	self.chatBoxLock.release()
 	if (self.chatPopulateThread is None):
 	    self.chatPopulateThread = self.after(0, self.populateChatThreadHandler)
 
     def populateChatThreadHandler(self):
-	if (not self.chatToPopulate):
+	if ((not self.chatToPopulate) and (not self.chatToPopulateReverse)):
 	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
 	    return
 	self.chatBoxLock.acquire()
-	if (not self.chatToPopulate):
+	if ((not self.chatToPopulate) and (not self.chatToPopulateReverse)):
 	    self.chatBoxLock.release()
 	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
 	    return
-	logLine = self.chatToPopulate.pop()
+	if (self.chatToPopulate):
+	    logLine = self.chatToPopulate.pop(0)
+	    reversed = False
+	else:
+	    logLine = self.chatToPopulateReverse.pop()
+	    reversed = True
 	if (logLine[0] != EVENT_MSG):
 	    self.chatBoxLock.release()
 	    self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
@@ -1919,23 +1891,48 @@ class MainGui(Tkinter.Frame):
 	tsTags = tuple(tsTags)
 	userTags = tuple(userTags)
 	msgTags = tuple(msgTags)
+	oldPos = self.chatBox.yview()
+	if (reversed):
 #####
 ##
-	#deal with emotes
-	if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
-	    msgTags = userTags
-	    msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	    #deal with emotes
+	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+		msgTags = userTags
+		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	    else:
+		msg = ": %s\n" % msg
+	    self.chatBox.insert("1.0", msg, msgTags)
+	    #deal with badges
+	    self.chatBox.insert("1.0", userDisplay, userTags)
+	    if (self.preferences.get('showTimestamps')):
+		tsFmt = self.getPreference('timestampFormat')
+		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+##
+#####
 	else:
-	    msg = ": %s\n" % msg
-	self.chatBox.insert("1.0", msg, msgTags)
-	#deal with badges
-	self.chatBox.insert("1.0", userDisplay, userTags)
-	if (self.preferences.get('showTimestamps')):
-	    tsFmt = self.getPreference('timestampFormat')
-	    self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+	    if (self.preferences.get('showTimestamps')):
+		tsFmt = self.getPreference('timestampFormat')
+		self.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+#####
+##
+	    #deal with badges
 ##
 #####
-	self.chatBox.see(Tkinter.END)
+	    self.chatBox.insert(Tkinter.END, userDisplay, userTags)
+#####
+##
+	    #deal with emotes
+	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+		msgTags = userTags
+		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
+	    else:
+		msg = ": %s\n" % msg
+	    self.chatBox.insert(Tkinter.END, msg, msgTags)
+##
+#####
+	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
+	    #self.chatBox.see(Tkinter.END)
+	    pass
 	self.chatBoxLock.release()
 	self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
 
