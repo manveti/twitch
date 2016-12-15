@@ -992,7 +992,11 @@ class MainGui(Tkinter.Frame):
 	self.channels[self.curChannel]['userLock'].acquire()
 	for user in self.getSortedUsers(self.curChannel):
 	    self.userList.insert(Tkinter.END, self.channels[self.curChannel]['users'][user].get('display',user))
-	self.userCountBox.configure(text="%s users" % len(self.channels[self.curChannel]['users']))
+	if (len(self.channels[self.curChannel]['users']) == 1):
+	    userCount = "1 user"
+	else:
+	    userCount = "%s users" % len(self.channels[self.curChannel]['users'])
+	self.userCountBox.configure(text=userCount)
 	self.channels[self.curChannel]['userLock'].release()
 	self.userListLock.release()
 
@@ -1973,7 +1977,11 @@ class MainGui(Tkinter.Frame):
 	#reselect selected user if possible
 ##
 #####
-	self.userCountBox.configure(text="%s users" % len(self.channels[self.curChannel]['users']))
+	if (len(self.channels[self.curChannel]['users']) == 1):
+	    userCount = "1 user"
+	else:
+	    userCount = "%s users" % len(self.channels[self.curChannel]['users'])
+	self.userCountBox.configure(text=userCount)
 	self.usersToUpdate = []
 	self.userListLock.release()
 	self.userUpdateThread = self.after_idle(self.updateUserThreadHandler)
