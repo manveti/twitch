@@ -181,11 +181,6 @@ class MainGui(Tkinter.Frame):
 	self.scratchMsgs = []
 	self.inputHistory = []
 	self.inputHistoryPos = 0
-#####
-##
-	#stuff
-##
-#####
 	self.prefsToSet = {}
 	self.macrosMenus = []
 	self.curMacro = ()
@@ -457,7 +452,7 @@ class MainGui(Tkinter.Frame):
 	    #raise channel tab
 	    return
 ##
-######
+#####
 	self.channels[channel] = channelDict
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
@@ -520,11 +515,8 @@ class MainGui(Tkinter.Frame):
 		if (logLine[0] != EVENT_MSG):
 		    continue
 		(e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
-#####
-##
-		f.write("%s %s: %s\n" % (time.strftime("%H:%M:%S", time.localtime(ts)), userDisplay, msg))
-##
-######
+		tsFmt = self.getPreference('timestampFormat')
+		f.write("%s %s: %s\n" % (time.strftime(tsFmt, time.localtime(ts)), userDisplay, msg))
 	finally:
 	    if (f):
 		f.close()
@@ -1010,7 +1002,7 @@ class MainGui(Tkinter.Frame):
 ##
 	#maybe prompt to confirm leaving without saving log; return True to abort
 ##
-######
+#####
 	self.chat.leave(channel)
 	self.channelOrder = self.channelOrder[:idx] + self.channelOrder[idx + 1:]
 	del self.channels[channel]
@@ -1397,6 +1389,11 @@ class MainGui(Tkinter.Frame):
 	    return
 	updateChat = False
 	for pref in self.prefsToSet.keys():
+#####
+##
+	    #if (pref == 'timestampFormat'): verify self.prefsToSet[pref] is valid timestamp format
+##
+#####
 	    self.preferences[pref] = self.prefsToSet[pref]
 	    if (pref in CHAT_PREFERENCES):
 		updateChat = True
@@ -1698,12 +1695,6 @@ class MainGui(Tkinter.Frame):
 	    self.macroDefBox.insert(Tkinter.END, macro[1])
 	self.macroDefDelBut.config(state=Tkinter.NORMAL)
 
-#####
-##
-    #other macro window handlers
-##
-#####
-
     def populateMacrosMenu(self, menu, menuLst, macros):
 	for macro in macros:
 	    if (len(macro) == 2):
@@ -1714,17 +1705,7 @@ class MainGui(Tkinter.Frame):
 		menu.add_cascade(label=macro[0], menu=subMen)
 	    else:
 		menuLst.append(None)
-#####
-##
 		menu.add_command(label=macro[0], command=lambda f=macro[1], p=macro[2]: self.executeMacro(f, p))
-	    #macro is (name, format, prompts)
-	    #  prompt is (optional name, prompt string, type, optional default, optional type args (e.g. min/max))
-	    #    prompt should probably be dictionary because of all the optional values
-	    #    type is one of user, string, integer, float
-	    #macro list is (name, children)
-
-##
-#####
 
     def getPreference(self, pref, default=None):
 	return self.preferences.get(pref, DEFAULT_PREFERENCES.get(pref, default))
@@ -1740,7 +1721,7 @@ class MainGui(Tkinter.Frame):
 	#get oauth (logging in if necessary)
 	oauth=base64.b64decode(self.preferences.get('token'))
 ##
-######
+#####
 	if (not self.chat):
 	    latinThresh = self.getPreference('latinThreshold')
 	    userHint = self.getPreference('userName')
@@ -1894,11 +1875,11 @@ class MainGui(Tkinter.Frame):
 	    self.chatBox.insert("1.0", msg, msgTags)
 	    #deal with badges
 	    self.chatBox.insert("1.0", userDisplay, userTags)
+##
+#####
 	    if (self.preferences.get('showTimestamps')):
 		tsFmt = self.getPreference('timestampFormat')
 		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
-##
-#####
 	else:
 	    if (self.preferences.get('showTimestamps')):
 		tsFmt = self.getPreference('timestampFormat')
@@ -1921,8 +1902,7 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
-	    #self.chatBox.see(Tkinter.END)
-	    pass
+	    self.chatBox.see(Tkinter.END)
 	self.chatBoxLock.release()
 	self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
 
