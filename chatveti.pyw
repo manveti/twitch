@@ -321,12 +321,8 @@ class MainGui(Tkinter.Frame):
 	kwargs = {'activestyle': "none"}
 	if (self.preferences.get('userColor')):
 	    kwargs['foreground'] = self.preferences.get('userColor')
-	elif (self.preferences.get('chatColor')):
-	    kwargs['foreground'] = self.preferences.get('chatColor')
 	if (self.preferences.get('userBgColor')):
 	    kwargs['background'] = self.preferences.get('userBgColor')
-	elif (self.preferences.get('chatBgColor')):
-	    kwargs['background'] = self.preferences.get('chatBgColor')
 	self.userList = Tkinter.Listbox(self.userGrid, **kwargs)
 	self.userList.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.userVScroll = Tkinter.Scrollbar(self.userGrid, command=self.userList.yview)
@@ -385,6 +381,9 @@ class MainGui(Tkinter.Frame):
 	    self.msgFont = tkFont.Font(**kwargs)
 	    self.chatBox.tag_configure("msgFont", font=self.msgFont)
 	    self.useFontTag = True
+	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	self.chatBox.tag_configure("invertColor", foreground=bgColor, background=fgColor)
 
 	self.master.protocol("WM_DELETE_WINDOW", self.interceptExit)
 
@@ -1436,7 +1435,47 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	    self.preferences[pref] = self.prefsToSet[pref]
-	    if (pref in CHAT_PREFERENCES):
+	    if (pref == 'chatColor'):
+		self.chatBox.tag_configure("msgColor", foreground=self.prefsToSet[pref])
+		self.chatBox.tag_configure("invertColor", background=self.prefsToSet[pref])
+		self.chatBox.config(fg=self.prefsToSet[pref])
+		self.chatInputBox.config(fg=self.prefsToSet[pref])
+	    elif (pref == 'chatBgColor'):
+		self.chatBox.tag_configure("msgColor", background=self.prefsToSet[pref])
+		self.chatBox.tag_configure("invertColor", foreground=self.prefsToSet[pref])
+		self.chatBox.config(bg=self.prefsToSet[pref])
+		self.chatInputBox.config(bg=self.prefsToSet[pref])
+	    elif (pref == 'chatFontFamily'):
+		if (self.msgFont):
+		    self.msgFont.config(family=self.prefsToSet[pref])
+		else:
+		    self.msgFont = tkFont.Font(**self.getFontArgs())
+	    elif (pref == 'chatFontSize'):
+		if (self.msgFont):
+		    self.msgFont.config(size=self.prefsToSet[pref])
+		else:
+		    self.msgFont = tkFont.Font(**self.getFontArgs())
+	    elif (pref == 'chatFontBold'):
+		if (self.msgFont):
+		    if (self.prefsToSet[pref]):
+			self.msgFont.config(weight="bold")
+		    else:
+			self.msgFont.config(weight="normal")
+		else:
+		    self.msgFont = tkFont.Font(**self.getFontArgs())
+	    elif (pref == 'chatFontItalic'):
+		if (self.msgFont):
+		    if (self.prefsToSet[pref]):
+			self.msgFont.config(weight="italic")
+		    else:
+			self.msgFont.config(weight="roman")
+		else:
+		    self.msgFont = tkFont.Font(**self.getFontArgs())
+	    elif (pref == 'timestampColor'):
+		self.chatBox.tag_configure("tsColor", foreground=self.prefsToSet[pref])
+	    elif (pref == 'timestampBgColor'):
+		self.chatBox.tag_configure("tsColor", background=self.prefsToSet[pref])
+	    elif (pref in CHAT_PREFERENCES):
 		updateChat = True
 	    elif (pref == 'userColor'):
 		self.userList.config(fg=self.prefsToSet[pref])
@@ -1468,6 +1507,10 @@ class MainGui(Tkinter.Frame):
 		    self.userPaneToggle.configure(text="<")
 		    self.configUserVar.set(0)
 		self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
+	if ((self.prefsToSet.has_key('chatColor')) and (not self.preferences.has_key('timestampColor'))):
+	    self.chatBox.tag_configure("tsColor", foreground=self.prefsToSet['chatColor'])
+	if ((self.prefsToSet.has_key('chatBgColor')) and (not self.preferences.has_key('timestampBgColor'))):
+	    self.chatBox.tag_configure("tsColor", background=self.prefsToSet['chatBgColor'])
 	self.savePreferences()
 	if ((updateChat) and (self.curChannel)):
 	    self.populateChat(self.channels[self.curChannel]['log'])
