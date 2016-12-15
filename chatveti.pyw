@@ -83,28 +83,10 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	userSort = self.master.getSortedUsers(channel)
 	idx = userSort.index(user)
 	self.master.userListLock.acquire()
-	self.master.userList.insert(idx, user)
-	self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
+	self.master.usersToUpdate.append((EVENT_JOIN, user, idx))
 	self.master.userListLock.release()
-
-    def usersJoined(self, channel, users):
-	if (not self.master.channels.has_key(channel)):
-	    return
-	if (len(users) < len(self.master.channels[channel]['users']) / 2):
-	    return Twitch.ChatCallbacks.usersJoined(self, channel, users)
-	self.master.channels[channel]['userLock'].acquire()
-	for user in users:
-	    self.master.channels[channel]['users'][user] = {'display': user}
-	    self.master.channels[channel]['log'].append((EVENT_JOIN, time.time(), user))
-	self.master.channels[channel]['userLock'].release()
-	if (channel != self.master.curChannel):
-	    return
-	self.master.userListLock.acquire()
-	self.master.userList.delete(0, Tkinter.END)
-	for user in self.master.getSortedUsers(channel):
-	    self.master.userList.insert(Tkinter.END, user)
-	self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
-	self.master.userListLock.release()
+	if (self.master.userUpdateThread is None):
+	    self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
 
     def userLeft(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
@@ -116,9 +98,10 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    userSort = self.master.getSortedUsers(channel)
 	    idx = userSort.index(user)
 	    self.master.userListLock.acquire()
-	    self.master.userList.delete(idx)
-	    self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
+	    self.master.usersToUpdate.append((EVENT_LEAVE, user, idx))
 	    self.master.userListLock.release()
+	    if (self.master.userUpdateThread is None):
+		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
 	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
 	self.master.channels[channel]['userLock'].release()
@@ -139,7 +122,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 		self.master.userListLock.acquire()
 		userSort = self.master.getSortedUsers(channel)
 		idx = userSort.index(user)
-		self.master.userList.delete(idx)
+		self.master.usersToUpdate.append((EVENT_LEAVE, user, idx))
 		self.master.userListLock.release()
 	    self.master.channels[channel]['users'][user]['display'] = userDisplay
 	    updateUserList = True
@@ -160,9 +143,11 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.acquire()
 	    userSort = self.master.getSortedUsers(channel)
 	    idx = userSort.index(user)
-	    self.master.userList.insert(idx, self.master.channels[channel]['users'][user].get('display', user))
-	    self.master.userCountBox.configure(text="%s users" % len(self.master.channels[channel]['users']))
+	    display = self.master.channels[channel]['users'][user].get('display', user)
+	    self.master.usersToUpdate.append((EVENT_JOIN, display, idx))
 	    self.master.userListLock.release()
+	    if (self.master.userUpdateThread is None):
+		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
 	self.master.chatBoxLock.acquire()
 	self.master.chatToPopulate.append(logLine)
 	self.master.chatBoxLock.release()
@@ -183,6 +168,8 @@ class MainGui(Tkinter.Frame):
 	self.chatToPopulate = []
 	self.chatToPopulateReverse = []
 	self.chatPopulateThread = None
+	self.usersToUpdate = []
+	self.userUpdateThread = None
 	self.chatTags = {}
 	self.useTsTag = False
 	self.useMsgTag = False
@@ -1935,6 +1922,40 @@ class MainGui(Tkinter.Frame):
 	    pass
 	self.chatBoxLock.release()
 	self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
+
+    def updateUserThreadHandler(self):
+	if ((not self.usersToUpdate) or (not self.curChannel) or (not self.channels.has_key(self.curChannel))):
+	    self.userUpdateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.updateUserThreadHandler)
+	    return
+	self.userListLock.acquire()
+	if ((not self.usersToUpdate) or (not self.curChannel) or (not self.channels.has_key(self.curChannel))):
+	    self.userListLock.release()
+	    self.userUpdateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.updateUserThreadHandler)
+	    return
+#####
+##
+	#keep track of which user was selected
+##
+#####
+	if (len(self.usersToUpdate) > len(self.channels[self.curChannel]['users']) / 3):
+	    self.userList.delete(0, Tkinter.END)
+	    for user in self.getSortedUsers(self.curChannel):
+		self.userList.insert(Tkinter.END, user)
+	else:
+	    for (event, user, idx) in self.usersToUpdate:
+		if (event == EVENT_JOIN):
+		    self.userList.insert(idx, user)
+		elif (event == EVENT_LEAVE):
+		    self.userList.delete(idx)
+#####
+##
+	#reselect selected user if possible
+##
+#####
+	self.userCountBox.configure(text="%s users" % len(self.channels[self.curChannel]['users']))
+	self.usersToUpdate = []
+	self.userListLock.release()
+	self.userUpdateThread = self.after_idle(self.updateUserThreadHandler)
 
     def doSearch(self, skip=False):
 	idx = Tkinter.INSERT
