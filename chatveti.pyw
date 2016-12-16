@@ -1967,16 +1967,12 @@ class MainGui(Tkinter.Frame):
 	    msg = msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
 	else:
 	    msgStart = ": "
+	msg = msg.decode("utf-8") # emotes use char indices rather than byte indices, so use UTF-8 from here on
 	lastIdx = 0
 	exp = re.compile("[@]?(%s|%s)" % (re.escape(self.chat.userName), re.escape(self.chat.displayName)), re.I)
 	# split message into emotes and chunks between emotes
-#####
-##
-#make sure this plays well with multibyte characters
 	for (emStart, emEnd, emId) in emotes:
 	    chunk = msgStart + msg[lastIdx : emStart]
-##
-#####
 	    if (chunk):
 		# split chunk into mentions and chunks between mentions
 		chunkIdx = 0
@@ -1992,7 +1988,7 @@ class MainGui(Tkinter.Frame):
 ##
 	    #handle emote chunk
 	    chunk = msg[emStart : emEnd]
-	    chunks.append((chunk, msgTags))
+	    chunks.append((chunk, invertTags))
 ##
 #####
 	    lastIdx = emEnd
