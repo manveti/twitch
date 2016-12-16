@@ -1008,7 +1008,8 @@ class MainGui(Tkinter.Frame):
 	#maybe prompt to confirm leaving without saving log; return True to abort
 ##
 #####
-	self.chat.leave(channel)
+	if (self.chat):
+	    self.chat.leave(channel)
 	self.channelOrder = self.channelOrder[:idx] + self.channelOrder[idx + 1:]
 	del self.channels[channel]
 	self.curChannel = None
@@ -1933,6 +1934,7 @@ class MainGui(Tkinter.Frame):
 	tsTags = []
 	userTags = []
 	msgTags = []
+	invertTags = ["invertColor"]
 	if (userColor):
 	    userTags.append(userColor)
 	if (self.useTsTag):
@@ -1943,48 +1945,73 @@ class MainGui(Tkinter.Frame):
 	    tsTags.append("msgFont")
 	    userTags.append("msgFont")
 	    msgTags.append("msgFont")
+	    invertTags.append("msgFont")
 	tsTags = tuple(tsTags)
 	userTags = tuple(userTags)
 	msgTags = tuple(msgTags)
+	invertTags = tuple(invertTags)
 	oldPos = self.chatBox.yview()
-	if (reversed):
+	chunks = []
+	if (self.preferences.get('showTimestamps')):
+	    tsFmt = self.getPreference('timestampFormat')
+	    chunks.append(("%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags))
 #####
 ##
-	    #deal with emotes
-	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
-		msgTags = userTags
-		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
-	    else:
-		msg = ": %s\n" % msg
-	    self.chatBox.insert("1.0", msg, msgTags)
-	    #deal with badges
-	    self.chatBox.insert("1.0", userDisplay, userTags)
+	#deal with badges
 ##
 #####
-	    if (self.preferences.get('showTimestamps')):
-		tsFmt = self.getPreference('timestampFormat')
-		self.chatBox.insert("1.0", "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+	chunks.append((userDisplay, userTags))
+	if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
+	    msgTags = userTags
+	    msgStart = " "
+	    msg = msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
 	else:
-	    if (self.preferences.get('showTimestamps')):
-		tsFmt = self.getPreference('timestampFormat')
-		self.chatBox.insert(Tkinter.END, "%s " % time.strftime(tsFmt, time.localtime(ts)), tsTags)
+	    msgStart = ": "
+	lastIdx = 0
+	exp = re.compile("[@]?(%s|%s)" % (re.escape(self.chat.userName), re.escape(self.chat.displayName)), re.I)
+	# split message into emotes and chunks between emotes
 #####
 ##
-	    #deal with badges
+#make sure this plays well with multibyte characters
+	for (emStart, emEnd, emId) in emotes:
+	    chunk = msgStart + msg[lastIdx : emStart]
 ##
 #####
-	    self.chatBox.insert(Tkinter.END, userDisplay, userTags)
+	    if (chunk):
+		# split chunk into mentions and chunks between mentions
+		chunkIdx = 0
+		for m in exp.finditer(chunk):
+		    if (m.start() > chunkIdx):
+			chunks.append((chunk[chunkIdx : m.start()], msgTags))
+		    chunks.append((chunk[m.start() : m.end()], invertTags))
+		    chunkIdx = m.end()
+		if (chunkIdx < len(chunk)):
+		    chunks.append((chunk[chunkIdx:], msgTags))
+		msgStart = ""
 #####
 ##
-	    #deal with emotes
-	    if ((msg.startswith(ACTION_PREFIX)) and (msg.endswith(ACTION_SUFFIX))):
-		msgTags = userTags
-		msg = " %s\n" % msg[len(ACTION_PREFIX):-len(ACTION_SUFFIX)]
-	    else:
-		msg = ": %s\n" % msg
-	    self.chatBox.insert(Tkinter.END, msg, msgTags)
+	    #handle emote chunk
+	    chunk = msg[emStart : emEnd]
+	    chunks.append((chunk, msgTags))
 ##
 #####
+	    lastIdx = emEnd
+	# handle mentions in last chunk
+	chunk = msgStart + msg[lastIdx:] + "\n"
+	chunkIdx = 0
+	for m in exp.finditer(chunk):
+	    if (m.start() > chunkIdx):
+		chunks.append((chunk[chunkIdx : m.start()], msgTags))
+	    chunks.append((chunk[m.start() : m.end()], invertTags))
+	    chunkIdx = m.end()
+	if (chunkIdx < len(chunk)):
+	    chunks.append((chunk[chunkIdx:], msgTags))
+	insertPos = Tkinter.END
+	if (reversed):
+	    insertPos = "1.0"
+	    chunks.reverse()
+	for (msg, tag) in chunks:
+	    self.chatBox.insert(insertPos, msg, tag)
 	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
 	    self.chatBox.see(Tkinter.END)
 	self.chatBoxLock.release()
