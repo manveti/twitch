@@ -50,12 +50,14 @@ CHAT_POPULATE_INTERVAL = 0.1
 PROMPT_EXP = re.compile("%[(](?P<name>[^)]+)[)]s")
 USER_TOKEN_EXP = re.compile("\s+|@")
 
+COLOR_FACTORS = (0.299, 0.587, 0.114) # make sure sum(COLOR_FACTORS) == 1 and all factors strictly between 0 and 1
+
 
 def getColorBrightness(c):
 #####
 ##
-    #return int(round((0.299 * c[0] * c[0] + 0.587 * c[1] * c[1] + 0.114 * c[2] * c[2]) ** 0.5))
-    return int(round(0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]))
+    #return int(round(sum(COLOR_FACTORS[i] * c[i] * c[i] for i in xrange(len(COLOR_FACTORS))) ** 0.5))
+    return int(round(sum(COLOR_FACTORS[i] * c[i] for i in xrange(len(COLOR_FACTORS)))))
 ##
 #####
 
@@ -1845,18 +1847,50 @@ class MainGui(Tkinter.Frame):
 	rBr = getColorBrightness(ref)
 	if (abs(cBr - rBr) >= threshold):
 	    return c
+	def pushToBounds(t):
+	    t = list(t)
+	    for i in xrange(len(t)):
+		if (t[i] < 0):
+		    # t[i] is negative, so push it up to 0 and push other components darker to compensate
+		    for j in xrange(len(t)):
+			if (j == i):
+			    continue
+			t[j] += int(round(t[i] * COLOR_FACTORS[i] / (1 - COLOR_FACTORS[i])))
+			if ((t[j] < 0) and (j < i)):
+			    # not enough room to push component we've already fixed any darker; abort
+			    return
+		    t[i] = 0
+		elif (t[i] > 255):
+		    # t[i] is positive, so push it down to 255 and push other components brighter to compensate
+		    for j in xrange(len(t)):
+			if (j == i):
+			    continue
+			t[j] += int(round((t[i] - 255) * COLOR_FACTORS[i] / (1 - COLOR_FACTORS[i])))
+			if ((t[j] > 255) and (j < i)):
+			    # not enough room to push component we've already fixed any brighter; abort
+			    return
+		    t[i] = 255
+	    return tuple(t)
 	if (cBr != 0):
 	    if (cBr < rBr):
 		# see if we can push c darker without pushing below 0
 		f = float(rBr - threshold) / cBr
-		t = (c[0] * f, c[1] * f, c[2] * f)
+		t = tuple(int(round(component * f)) for component in c)
 		if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		    return t
+		# something got pushed out of bounds; try to push it back and adjust other components to compensate
+		t = pushToBounds(t)
+		if (t):
 		    return t
 	    else:
 		# see if we can push c lighter without pushing above 255
 		f = float(rBr + threshold) / cBr
-		t = (c[0] * f, c[1] * f, c[2] * f)
+		t = tuple(int(round(component * f)) for component in c)
 		if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		    return t
+		# something got pushed out of bounds; try to push it back and adjust other components to compensate
+		t = pushToBounds(t)
+		if (t):
 		    return t
 	# if we got here, we'll have to push the other direction
 	if (rBr < 128):
@@ -1864,13 +1898,25 @@ class MainGui(Tkinter.Frame):
 	    if (cBr == 0):
 		return (255, 255, 255)
 	    f = float(rBr + threshold) / cBr
-	    return (min(c[0] * f, 255), min(c[1] * f, 255), min(c[2] * f, 255))
+	    t = tuple(int(round(component * f)) for component in c)
+	    if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		return t
+	    t = pushToBounds(t)
+	    if (t):
+		return t
+	    return (255, 255, 255)
 	else:
 	    # ref is light, so push c darker
 	    if (cBr == 0):
 		return (0, 0, 0)
 	    f = max(float(rBr - threshold) / cBr, 0)
-	    return (min(c[0] * f, 255), min(c[1] * f, 255), min(c[2] * f, 255))
+	    t = tuple(int(round(component * f)) for component in c)
+	    if ((t[0] >= 0) and (t[0] < 256) and (t[1] >=0) and (t[1] < 256) and (t[2] >= 0) and (t[2] < 256)):
+		return t
+	    t = pushToBounds(t)
+	    if (t):
+		return t
+	    return (0, 0, 0)
 
     def adjustHexColor(self, c, ref, threshold=None):
 	return rgbToHex(self.adjustColor(hexToRgb(c), hexToRgb(ref), threshold))
@@ -1969,7 +2015,15 @@ class MainGui(Tkinter.Frame):
 	    msgStart = ": "
 	msg = msg.decode("utf-8") # emotes use char indices rather than byte indices, so use UTF-8 from here on
 	lastIdx = 0
-	exp = re.compile("[@]?(%s|%s)" % (re.escape(self.chat.userName), re.escape(self.chat.displayName)), re.I)
+	exp = "^(?!)"
+	if (self.chat):
+	    if ((self.chat.userName) and (self.chat.displayName)):
+		exp = "[@]?(%s|%s)" % (re.escape(self.chat.userName), re.escape(self.chat.displayName))
+	    elif (self.chat.userName):
+		exp = "[@]?%s" % re.escape(self.chat.userName)
+	    elif (self.chat.displayName):
+		exp = "[@]?%s" % re.escape(self.chat.displayName)
+	exp = re.compile(exp, re.I)
 	# split message into emotes and chunks between emotes
 	for (emStart, emEnd, emId) in emotes:
 	    chunk = msgStart + msg[lastIdx : emStart]
