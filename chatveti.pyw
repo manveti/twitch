@@ -839,24 +839,54 @@ class MainGui(Tkinter.Frame):
 	self.preferencesWin.state(newstate=Tkinter.NORMAL)
 	self.preferencesWin.lift()
 
-    def addFavorite(self):
-	if ((not self.curChannel) or (self.curChannel in self.preferences.get('favorites', []))):
+    def addFavorite(self, channel=None):
+	if (channel is None):
+	    channel = self.curChannel
+	if ((not channel) or (channel in self.preferences.get('favorites', []))):
 	    return
 	favorites = self.preferences.get('favorites', [])
-	favorites.append(self.curChannel)
+	favorites.append(channel)
 	favorites.sort(key=lambda c: c.lower())
 	self.preferences['favorites'] = favorites
-	self.preferences.sync()
-	idx = self.preferences['favorites'].index(self.curChannel)
-	cmd = lambda c=self.curChannel: self.doChannelOpen(c)
-	self.favoritesMen.insert_command(idx + 3, label=self.curChannel, command=cmd)
+	self.savePreferences()
+	idx = self.preferences['favorites'].index(channel)
+	cmd = lambda c=channel: self.doChannelOpen(c)
+	self.favoritesMen.insert_command(idx + 3, label=channel, command=cmd)
+	if (self.favoritesWin):
+	    self.favList.insert(idx, channel)
 
     def editFavorites(self):
-#####
-##
-	pass
-##
-#####
+	if (not self.favoritesWin):
+	    self.favoritesWin = Tkinter.Toplevel()
+	    self.favoritesWin.protocol("WM_DELETE_WINDOW", self.favoritesWin.withdraw)
+	    self.favoritesWin.title("Favorite Channels")
+	    self.favoritesGrid = Tkinter.Frame(self.favoritesWin)
+	    self.favList = Tkinter.Listbox(self.favoritesGrid, width=32, activestyle="none")
+	    for channel in self.preferences.get('favorites', []):
+		self.favList.insert(Tkinter.END, channel)
+	    self.favList.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.favoritesVScroll = Tkinter.Scrollbar(self.favoritesGrid, command=self.favList.yview)
+	    self.favoritesVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.favoritesHScroll = Tkinter.Scrollbar(self.favoritesGrid, orient=Tkinter.HORIZONTAL,
+							command=self.favList.xview)
+	    self.favoritesHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.favList.configure(xscrollcommand=self.favoritesHScroll.set,
+				    yscrollcommand=self.favoritesVScroll.set)
+	    self.favoritesGrid.columnconfigure(0, weight=1)
+	    self.favoritesGrid.rowconfigure(0, weight=1)
+	    self.favoritesGrid.grid(row=0, column=0, columnspan=2,
+				    sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	    self.favDeleteBut = Tkinter.Button(self.favoritesWin, text="Delete", command=self.favoriteDelete)
+	    self.favDeleteBut.grid(row=2, column=0, pady=3, sticky=Tkinter.W)
+	    self.favNewBut = Tkinter.Button(self.favoritesWin, text="Add...", command=self.favoriteNew)
+	    self.favNewBut.grid(row=2, column=1, pady=3, sticky=Tkinter.E)
+	    self.favDoneBut = Tkinter.Button(self.favoritesWin, text="Done", command=self.favoritesWin.withdraw)
+	    self.favDoneBut.grid(row=3, column=1, sticky=(Tkinter.E, Tkinter.S))
+	    self.favoritesWin.columnconfigure(0, weight=1)
+	    self.favoritesWin.columnconfigure(1, weight=1)
+	    self.favoritesWin.rowconfigure(0, weight=1)
+	self.favoritesWin.state(newstate=Tkinter.NORMAL)
+	self.favoritesWin.lift()
 
     def editMacros(self):
 	if (not self.macrosWin):
@@ -1519,11 +1549,25 @@ class MainGui(Tkinter.Frame):
 	    self.populateChat(self.channels[self.curChannel]['log'])
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
 
-#####
-##
-    #favorites window handlers
-##
-#####
+    def favoriteDelete(self):
+	sel = self.favList.curselection()
+	if ((not sel) or (not sel[0])):
+	    return
+	idx = int(sel[0])
+	favorites = self.preferences.get('favorites', [])
+	if ((idx < 0) or (idx >= len(favorites))):
+	    return
+	self.favList.delete(idx)
+	self.favoritesMen.delete(idx + 3)
+	favorites.pop(idx)
+	self.preferences['favorites'] = favorites
+	self.savePreferences()
+
+    def favoriteNew(self):
+	channel = tkSimpleDialog.askstring("Channel", "Enter channel to add to favorites", parent=self.favoritesWin)
+	if (not channel):
+	    return
+	self.addFavorite(channel)
 
 #####
 ##
