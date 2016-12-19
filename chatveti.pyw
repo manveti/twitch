@@ -575,17 +575,65 @@ class MainGui(Tkinter.Frame):
 	if (not self.accountWin):
 	    def closeAccountWin():
 		self.accountWin.withdraw()
+	    userName = "<not logged in>"
+	    displayName = "<not logged in>"
+	    userId = "<not logged in>"
+	    userState = Tkinter.DISABLED
+	    if (self.preferences.get('token')):
+		userName = self.preferences.get('userName', "<unknown>")
+		displayName = self.preferences.get('displayName', userName)
+		userId = self.preferences.get('userId', "<unknown>")
+		userState = Tkinter.NORMAL
 	    self.accountWin = Tkinter.Toplevel()
 	    self.accountWin.protocol("WM_DELETE_WINDOW", closeAccountWin)
 	    self.accountWin.title("Account")
+	    self.actUserGrp = Tkinter.LabelFrame(self.accountWin, text="User")
+	    self.actUserLbl = Tkinter.Label(self.actUserGrp, text="Username:")
+	    self.actUserLbl.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.actUserBox = Tkinter.Label(self.actUserGrp, text=userName)
+	    self.actUserBox.grid(row=0, column=1, sticky=Tkinter.W)
+	    self.actDisplayLbl = Tkinter.Label(self.actUserGrp, text="Display Name:")
+	    self.actDisplayLbl.grid(row=1, column=0, sticky=Tkinter.W)
+	    self.actDisplayBox = Tkinter.Label(self.actUserGrp, text=displayName)
+	    self.actDisplayBox.grid(row=1, column=1, sticky=Tkinter.W)
+	    self.actUserIdLbl = Tkinter.Label(self.actUserGrp, text="User ID:")
+	    self.actUserIdLbl.grid(row=2, column=0, sticky=Tkinter.W)
+	    self.actUserIdBox = Tkinter.Label(self.actUserGrp, text=userId)
+	    self.actUserIdBox.grid(row=2, column=1, sticky=Tkinter.W)
+	    self.actUserRefreshBut = Tkinter.Button(self.actUserGrp, text="Refresh", command=self.actUserRefresh,
+						    state=userState)
+	    self.actUserRefreshBut.grid(row=3, column=1, sticky=Tkinter.E)
+	    self.actUserGrp.columnconfigure(1, weight=1)
+	    self.actUserGrp.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.actPermGrp = Tkinter.LabelFrame(self.accountWin, text="Permissions")
+	    self.actPermUserReadBox = Tkinter.Label(self.actPermGrp, text="Read User Info")
+	    self.actPermUserReadBox.grid(row=0, column=0, sticky=Tkinter.W)
+	    self.actPermChatLoginBox = Tkinter.Label(self.actPermGrp, text="Chat Login")
+	    self.actPermChatLoginBox.grid(row=0, column=1, sticky=Tkinter.W)
 #####
 ##
-	    #login stuff:
-	    #account name (read-only)
-	    #permissions (for admin features, not yet added)
-	    #login button
+	    #others (for admin features, not yet added):
+	    #  channel_editor (write channel metadata)
+	    #  user_blocks_edit (ignore/unignore user)
+	    #  user_blocks_read (read list of ignored users)
+	    #  user_follows_edit (manage followed channels)
+	    #  user_subscriptions (read list of subscriptions)
 ##
 #####
+	    self.actPermGrp.columnconfigure(0, weight=1)
+	    self.actPermGrp.columnconfigure(1, weight=1)
+	    self.actPermGrp.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.actLoginGrp = Tkinter.LabelFrame(self.accountWin, text="Login")
+	    self.actLoginBut = Tkinter.Button(self.actLoginGrp, text="Login...", command=self.actLogin)
+	    self.actLoginBut.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E))
+	    self.actLogoutBut = Tkinter.Button(self.actLoginGrp, text="Logout", command=self.actLogout,
+						state=userState)
+	    self.actLogoutBut.grid(row=0, column=1, sticky=(Tkinter.W, Tkinter.E))
+	    self.actLoginGrp.columnconfigure(0, weight=1)
+	    self.actLoginGrp.columnconfigure(1, weight=1)
+	    self.actLoginGrp.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	    self.actDoneBut = Tkinter.Button(self.accountWin, text="Done", command=self.accountWin.withdraw)
+	    self.actDoneBut.grid(row=3, column=0, sticky=(Tkinter.E, Tkinter.S))
 	self.accountWin.state(newstate=Tkinter.NORMAL)
 	self.accountWin.lift()
 
@@ -1197,9 +1245,75 @@ class MainGui(Tkinter.Frame):
 #####
 ##
     #other handlers
-    #account window handlers
 ##
 #####
+
+    def actUserRefresh(self):
+	if (not self.preferences.get('token')):
+	    return
+	oauth = base64.b64decode(self.preferences.get('token'))
+	try:
+	    userInfo = Twitch.getApi("/user", oauth)
+	    self.preferences['userName'] = userInfo.get('name')
+	    self.preferences['displayName'] = userInfo.get('display_name', self.preferences['userName'])
+	    self.preferences['userId'] = userInfo.get('_id')
+	except ValueError:
+	    pass
+	userName = self.preferences.get('userName', "<unknown>")
+	displayName = self.preferences.get('displayName', userName)
+	userId = self.preferences.get('userId', "<unknown>")
+	self.actUserBox.configure(text=userName)
+	self.actDisplayBox.configure(text=displayName)
+	self.actUserIdBox.configure(text=userId)
+	self.savePreferences()
+
+    def actLogin(self):
+#####
+##
+	#maybe prompt for confirmation, esp. if chat logged in
+	#deal with chat (or disallow if chat logged in)
+	#figure out which scopes we need
+	scopes=Twitch.DEFAULT_SCOPES
+##
+#####
+	(oauth, scopes) = Twitch.getOauth(scopes, True)
+	if (not oauth):
+	    return
+	self.preferences['token'] = base64.b64encode(oauth)
+	self.preferences['scopes'] = scopes
+	if (self.preferences.has_key('userName')):
+	    del self.preferences['userName']
+	if (self.preferences.has_key('displayName')):
+	    del self.preferences['displayName']
+	if (self.preferences.has_key('userId')):
+	    del self.preferences['userId']
+	self.actUserRefreshBut.configure(state=Tkinter.NORMAL)
+	self.actLogoutBut.configure(state=Tkinter.NORMAL)
+	self.actUserRefresh()
+
+    def actLogout(self):
+#####
+##
+	#maybe prompt for confirmation, esp. if chat logged in
+	#deal with chat (or disallow if chat logged in)
+##
+#####
+	self.actUserBox.configure(text="<not logged in>")
+	self.actDisplayBox.configure(text="<not logged in>")
+	self.actUserIdBox.configure(text="<not logged in>")
+	self.actUserRefreshBut.configure(state=Tkinter.DISABLED)
+	self.actLogoutBut.configure(state=Tkinter.DISABLED)
+	if (self.preferences.has_key('token')):
+	    del self.preferences['token']
+	if (self.preferences.has_key('scopes')):
+	    del self.preferences['scopes']
+	if (self.preferences.has_key('userName')):
+	    del self.preferences['userName']
+	if (self.preferences.has_key('displayName')):
+	    del self.preferences['displayName']
+	if (self.preferences.has_key('userId')):
+	    del self.preferences['userId']
+	self.savePreferences()
 
     def chooseColor(self, title, pref, default, example, tagName=None, tagProp=None):
 	val = tkColorChooser.askcolor(default, parent=self.preferencesWin, title=title)
@@ -1849,19 +1963,30 @@ class MainGui(Tkinter.Frame):
 	if (self.channels.has_key(channel)):
 	    #maybe warn about already connected and/or raise channel tab
 	    return
-	#get oauth (logging in if necessary)
-	oauth=base64.b64decode(self.preferences.get('token'))
+##
+#####
+	if (not self.preferences.get('token')):
+	    self.actLogin()
+	oauth = base64.b64decode(self.preferences.get('token'))
+	if (not oauth):
+#####
+##
+	    #error
+	    return
 ##
 #####
 	if (not self.chat):
 	    latinThresh = self.getPreference('latinThreshold')
 	    userHint = self.getPreference('userName')
 	    displayHint = self.getPreference('userDisplay')
-	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth, latinThresh, userHint, displayHint)
+	    idHint = self.getPreference('userId')
+	    self.chat = Twitch.Chat(ChatCallbackFunctions(self), oauth, latinThresh, userHint, displayHint, idHint)
 	    if (self.chat.userName):
 		self.preferences['userName'] = self.chat.userName
 	    if (self.chat.displayName):
 		self.preferences['userDisplay'] = self.chat.displayName
+	    if (self.chat.userId):
+		self.preferences['userId'] = self.chat.userId
 	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
@@ -2060,13 +2185,13 @@ class MainGui(Tkinter.Frame):
 	msg = msg.decode("utf-8") # emotes use char indices rather than byte indices, so use UTF-8 from here on
 	lastIdx = 0
 	exp = "^(?!)"
-	if (self.chat):
-	    if ((self.chat.userName) and (self.chat.displayName)):
-		exp = "[@]?(%s|%s)" % (re.escape(self.chat.userName), re.escape(self.chat.displayName))
-	    elif (self.chat.userName):
-		exp = "[@]?%s" % re.escape(self.chat.userName)
-	    elif (self.chat.displayName):
-		exp = "[@]?%s" % re.escape(self.chat.displayName)
+	if ((self.preferences.get('userName')) and (self.preferences.get('displayName'))):
+	    exp = "[@]?(%s|%s)" % (re.escape(self.preferences['userName']),
+				    re.escape(self.preferences['displayName']))
+	elif (self.preferences.get('userName')):
+	    exp = "[@]?%s" % re.escape(self.preferences['userName'])
+	elif (self.preferences.get('displayName')):
+	    exp = "[@]?%s" % re.escape(self.preferences['displayName'])
 	exp = re.compile(exp, re.I)
 	# split message into emotes and chunks between emotes
 	for (emStart, emEnd, emId) in emotes:
@@ -2084,7 +2209,11 @@ class MainGui(Tkinter.Frame):
 		msgStart = ""
 #####
 ##
-	    #handle emote chunk
+	    #handle emote chunk:
+	    #  grab png from "http://static-cdn.jtvnw.net/emoticons/v1/%s/%s.0"%(emId, size: 1|2|3)
+	    #  convert it into something we can put into the chat box
+	    #  chunks.append(((chunk, image), msgTags))
+	    #  handle tuple below
 	    chunk = msg[emStart : emEnd]
 	    chunks.append((chunk, invertTags))
 ##

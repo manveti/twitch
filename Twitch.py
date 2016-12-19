@@ -162,7 +162,7 @@ class ChatCallbacks:
 	pass
 
 class Chat:
-    def __init__(self, callbacks, oauth=None, latinThresh=1, userHint=None, displayHint=None):
+    def __init__(self, callbacks, oauth=None, latinThresh=1, userHint=None, displayHint=None, idHint=None):
 	if (not oauth):
 	    oauth = getOauth()
 
@@ -174,12 +174,14 @@ class Chat:
 	    userInfo = getApi("/user", self.oauth)
 	    self.userName = userInfo.get('name')
 	    self.displayName = userInfo.get('display_name', self.userName)
+	    self.userId = userInfo.get('_id')
 	except ValueError:
 	    self.userName = userHint
 	    if (displayHint):
 		self.displayName = displayHint
 	    else:
 		self.displayName = userHint
+	    self.userId = idHint
 
 	self.socket = None
 	self.running = False
