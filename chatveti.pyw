@@ -27,6 +27,7 @@ DEFAULT_PREFERENCES = {
     'maxScratchWidth':		50,
     'showTimestamps':		True,
     'timestampFormat':		"%H:%M",
+    'userJoinNotifications':	False,
     'userPaneVisible':		True,
     'wrapChatText':		True,
 }
@@ -90,6 +91,18 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.userListLock.release()
 	if (self.master.userUpdateThread is None):
 	    self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
+#####
+##
+	if (self.master.preferences.get('userJoinNotifications')):
+	    msg = "%s joined the channel" % user
+	    logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
+	    self.master.chatBoxLock.acquire()
+	    self.master.chatToPopulate.append(logLine)
+	    self.master.chatBoxLock.release()
+	    if (self.master.chatPopulateThread is None):
+		self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
+##
+#####
 
     def userLeft(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
@@ -105,6 +118,18 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.release()
 	    if (self.master.userUpdateThread is None):
 		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
+#####
+##
+	    if (self.master.preferences.get('userJoinNotifications')):
+		msg = "%s left the channel" % user
+		logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
+		self.master.chatBoxLock.acquire()
+		self.master.chatToPopulate.append(logLine)
+		self.master.chatBoxLock.release()
+		if (self.master.chatPopulateThread is None):
+		    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
+##
+#####
 	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
 	self.master.channels[channel]['userLock'].release()
@@ -815,6 +840,10 @@ class MainGui(Tkinter.Frame):
 	    self.prefShowUserBox = Tkinter.Checkbutton(self.prefMiscGrp, text="Show User Pane",
 							variable=self.prefShowUser, command=self.updateShowUser)
 	    self.prefShowUserBox.grid(row=2, column=0, columnspan=2, sticky=Tkinter.W)
+	    self.prefUserJoin = Tkinter.IntVar()
+	    self.prefUserJoinBox = Tkinter.Checkbutton(self.prefMiscGrp, text="User Join/Leave Notifications",
+							variable=self.prefUserJoin, command=self.updateUserJoin)
+	    self.prefUserJoinBox.grid(row=3, column=0, columnspan=2, sticky=Tkinter.W)
 	    self.prefMiscGrp.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
 	    self.prefFmtMiscResetBut = Tkinter.Button(fmtMiscTab, text="Reset Page to Default",
 							command=self.prefFmtMiscReset)
@@ -882,6 +911,7 @@ class MainGui(Tkinter.Frame):
 	self.prefMaxHistory.set(self.getPreference('maxInputHistory'))
 	self.prefMaxScratch.set(self.getPreference('maxScratchWidth'))
 	self.prefShowUser.set(int(self.getPreference('userPaneVisible')))
+	self.prefUserJoin.set(int(self.getPreference('userJoinNotifications')))
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
 	self.prefsToSet = {}
 	self.preferencesWin.state(newstate=Tkinter.NORMAL)
@@ -1542,6 +1572,10 @@ class MainGui(Tkinter.Frame):
 	self.prefsToSet['userPaneVisible'] = bool(self.prefShowUser.get())
 	self.prefApplyBut.config(state=Tkinter.NORMAL)
 
+    def updateUserJoin(self, *args, **kwargs):
+	self.prefsToSet['userJoinNotifications'] = bool(self.prefUserJoin.get())
+	self.prefApplyBut.config(state=Tkinter.NORMAL)
+
     def prefFmtMiscReset(self):
 	for (pref, var, cast) in [('timestampFormat', self.prefTsFmt, str),
 				    ('showTimestamps', self.prefTsShow, int),
@@ -2140,10 +2174,27 @@ class MainGui(Tkinter.Frame):
 	    logLine = self.chatToPopulateReverse.pop()
 	    reversed = True
 	if (logLine[0] != EVENT_MSG):
-	    self.chatBoxLock.release()
-	    self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
-	    return
-	(e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
+	    doUserJoin = False
+	    if (self.preferences.get('userJoinNotifications')):
+		if (logLine[0] == EVENT_JOIN):
+		    msg = "%s joined the channel" % logLine[2]
+		    doUserJoin = True
+		elif (logLine[0] == EVENT_LEAVE):
+		    msg = "%s left the channel" % logLine[2]
+		    doUserJoin = True
+	    if (doUserJoin):
+		ts = logLine[1]
+		user = "<System>"
+		userDisplay = user
+		userColor = None
+		userBadges = []
+		emotes = []
+	    else:
+		self.chatBoxLock.release()
+		self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
+		return
+	else:
+	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
 	if (userColor):
 	    self.setupTag(self.curChannel, userColor)
 	tsTags = []
@@ -2197,6 +2248,14 @@ class MainGui(Tkinter.Frame):
 	for (emStart, emEnd, emId) in emotes:
 	    chunk = msgStart + msg[lastIdx : emStart]
 	    if (chunk):
+#####
+##
+		#look for links
+		#grab self.chatBox.index(Tkinter.END) before and after inserting link
+		#self.chatBox.tag_configure("link", underline=1)
+		#self.chatBox.tag_bind("link", "<Enter>", lambda: self.chatBox.config(cursor="arrow")
+		#self.chatBox.tag_bind("link", "<Leave>", lambda: self.chatBox.config(cursor="xterm")
+		#self.chatBox.tag_bind("link", "<Mouse-1>", lambda e: self.chatBox.index("@%s,%s"%(e.x, e.y))
 		# split chunk into mentions and chunks between mentions
 		chunkIdx = 0
 		for m in exp.finditer(chunk):
@@ -2204,6 +2263,8 @@ class MainGui(Tkinter.Frame):
 			chunks.append((chunk[chunkIdx : m.start()], msgTags))
 		    chunks.append((chunk[m.start() : m.end()], invertTags))
 		    chunkIdx = m.end()
+##
+#####
 		if (chunkIdx < len(chunk)):
 		    chunks.append((chunk[chunkIdx:], msgTags))
 		msgStart = ""
