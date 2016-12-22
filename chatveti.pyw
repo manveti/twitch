@@ -34,7 +34,7 @@ DEFAULT_PREFERENCES = {
 
 CHAT_PREFERENCES = set(['chatColor', 'chatBgColor', 'chatFontFamily', 'chatFontSize', 'chatFontBold',
 			'chatFontItalic', 'timestampColor', 'timestampBgColor', 'brightnessThreshold',
-			'showTimestamps', 'timestampFormat', 'latinThreshold'])
+			'showTimestamps', 'timestampFormat', 'latinThreshold', 'userJoinNotifications'])
 
 TIMESTAMP_FORMATS = ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p",
 		    "%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:S", "%m/%d/%y %I:%M %p", "%X", "%c"]
@@ -91,8 +91,6 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.userListLock.release()
 	if (self.master.userUpdateThread is None):
 	    self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
-#####
-##
 	if (self.master.preferences.get('userJoinNotifications')):
 	    msg = "%s joined the channel" % user
 	    logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
@@ -101,8 +99,6 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.chatBoxLock.release()
 	    if (self.master.chatPopulateThread is None):
 		self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
-##
-#####
 
     def userLeft(self, channel, user):
 	if (not self.master.channels.has_key(channel)):
@@ -118,8 +114,6 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.release()
 	    if (self.master.userUpdateThread is None):
 		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
-#####
-##
 	    if (self.master.preferences.get('userJoinNotifications')):
 		msg = "%s left the channel" % user
 		logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
@@ -128,8 +122,6 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 		self.master.chatBoxLock.release()
 		if (self.master.chatPopulateThread is None):
 		    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
-##
-#####
 	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
 	self.master.channels[channel]['userLock'].release()
@@ -166,6 +158,14 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	logLine = (EVENT_MSG, ts, user, msg, userDisplay, userColor, userBadges, emotes)
 	self.master.channels[channel]['log'].append(logLine)
 	if (channel != self.master.curChannel):
+	    self.master.channels[channel]['unreadLock'].acquire()
+	    self.master.channels[channel]['unread'] += 1
+	    self.master.channels[channel]['unreadLock'].release()
+	    self.master.unreadLock.acquire()
+	    self.master.unreadChannels.add(channel)
+	    self.master.unreadLock.release()
+	    if (self.master.updateUnreadThread is None):
+		self.master.updateUnreadThread = self.master.after(0, self.master.updateUnreadHandler)
 	    return
 	if (updateUserList):
 	    self.master.userListLock.acquire()
@@ -198,6 +198,8 @@ class MainGui(Tkinter.Frame):
 	self.chatPopulateThread = None
 	self.usersToUpdate = []
 	self.userUpdateThread = None
+	self.unreadChannels = set()
+	self.updateUnreadThread = None
 	self.chatTags = {}
 	self.useTsTag = False
 	self.useMsgTag = False
@@ -216,6 +218,7 @@ class MainGui(Tkinter.Frame):
 
 	self.chatBoxLock = threading.Lock()
 	self.userListLock = threading.Lock()
+	self.unreadLock = threading.Lock()
 
 	self.accountWin = None
 	self.preferencesWin = None
@@ -1094,6 +1097,14 @@ class MainGui(Tkinter.Frame):
 	if ((idx < 0) or (idx >= len(self.channelOrder)) or (self.channelOrder[idx] == self.curChannel)):
 	    return
 	self.curChannel = self.channelOrder[idx]
+	self.unreadLock.acquire()
+	if (self.curChannel in self.unreadChannels):
+	    self.unreadChannels.remove(self.curChannel)
+	self.unreadLock.release()
+	self.channels[self.curChannel]['unreadLock'].acquire()
+	self.channels[self.curChannel]['unread'] = 0
+	self.channels[self.curChannel]['unreadLock'].release()
+	self.channelTabs.tab(idx, text=self.channels[self.curChannel].get('channelName', self.curChannel))
 	self.populateChat(self.channels[self.curChannel]['log'])
 	self.userListLock.acquire()
 	self.usersToUpdate = []
@@ -2021,7 +2032,12 @@ class MainGui(Tkinter.Frame):
 		self.preferences['userDisplay'] = self.chat.displayName
 	    if (self.chat.userId):
 		self.preferences['userId'] = self.chat.userId
-	self.channels[channel] = {'users': {}, 'log': [], 'userLock': threading.Lock()}
+	self.channels[channel] = {
+		'users':	{},
+		'log':		[],
+		'userLock':	threading.Lock(),
+		'unread':	0,
+		'unreadLock':	threading.Lock()}
 	self.channelOrder.append(channel)
 	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
 	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
@@ -2339,6 +2355,31 @@ class MainGui(Tkinter.Frame):
 	self.usersToUpdate = []
 	self.userListLock.release()
 	self.userUpdateThread = self.after_idle(self.updateUserThreadHandler)
+
+    def updateUnreadHandler(self):
+	if (not self.unreadChannels):
+	    self.updateUnreadThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.updateUnreadHandler)
+	    return
+	self.unreadLock.acquire()
+	if (not self.unreadChannels):
+	    self.unreadLock.release()
+	    self.updateUnreadThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.updateUnreadHandler)
+	    return
+	for channel in self.unreadChannels:
+	    self.channels[channel]['unreadLock'].acquire()
+	    unreadCount = self.channels[channel]['unread']
+	    self.channels[channel]['unreadLock'].release()
+	    if (channel == self.curChannel):
+		continue
+	    label = "%s (%s)" % (self.channels[channel].get('channelName', channel), unreadCount)
+	    try:
+		tabIdx = self.channelOrder.index(channel)
+	    except ValueError:
+		continue
+	    self.channelTabs.tab(tabIdx, text=label)
+	self.unreadChannels = set()
+	self.unreadLock.release()
+	self.updateUnreadThread = self.after_idle(self.updateUnreadHandler)
 
     def doSearch(self, skip=False):
 	idx = Tkinter.INSERT
