@@ -94,9 +94,9 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	if (self.master.preferences.get('userJoinNotifications')):
 	    msg = "%s joined the channel" % user
 	    logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
-	    self.master.chatBoxLock.acquire()
-	    self.master.chatToPopulate.append(logLine)
-	    self.master.chatBoxLock.release()
+	    self.master.chatQueueLock.acquire()
+	    self.master.chatToPopulate.append((self.master.channels[channel]['chatBox'], [logLine]))
+	    self.master.chatQueueLock.release()
 	    if (self.master.chatPopulateThread is None):
 		self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 
@@ -117,9 +117,9 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    if (self.master.preferences.get('userJoinNotifications')):
 		msg = "%s left the channel" % user
 		logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
-		self.master.chatBoxLock.acquire()
-		self.master.chatToPopulate.append(logLine)
-		self.master.chatBoxLock.release()
+		self.master.chatQueueLock.acquire()
+		self.master.chatToPopulate.append((self.master.channels[channel]['chatBox'], [logLine]))
+		self.master.chatQueueLock.release()
 		if (self.master.chatPopulateThread is None):
 		    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 	self.master.channels[channel]['userLock'].acquire()
@@ -176,9 +176,9 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.release()
 	    if (self.master.userUpdateThread is None):
 		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
-	self.master.chatBoxLock.acquire()
-	self.master.chatToPopulate.append(logLine)
-	self.master.chatBoxLock.release()
+	self.master.chatQueueLock.acquire()
+	self.master.chatToPopulate.append((self.master.channels[channel]['chatBox'], [logLine]))
+	self.master.chatQueueLock.release()
 	if (self.master.chatPopulateThread is None):
 	    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 
@@ -200,6 +200,7 @@ class MainGui(Tkinter.Frame):
 	self.channels = {}
 	self.channelOrder = []
 	self.curChannel = None
+	self.chatBox = None
 	self.chat = None
 	self.chatToPopulate = []
 	self.chatToPopulateReverse = []
@@ -224,7 +225,7 @@ class MainGui(Tkinter.Frame):
 	self.curMacro = ()
 	self.curMacroPrompts = []
 
-	self.chatBoxLock = threading.Lock()
+	self.chatQueueLock = threading.Lock()
 	self.userListLock = threading.Lock()
 	self.unreadLock = threading.Lock()
 
@@ -292,44 +293,16 @@ class MainGui(Tkinter.Frame):
 
 	# chat pane
 	self.chatPane = Tkinter.Frame(self.panes)
-	self.channelTabs = Tkx.ClosableNotebook(self.chatPane, height=0)
+	self.channelTabs = Tkx.ClosableNotebook(self.chatPane, width=660, height=430)
 	self.channelTabs.bind("<<NotebookTabChanged>>", self.channelTabChanged)
 	self.channelTabs.onClose = self.channelTabClosed
-	self.channelTabs.grid(row=0, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.S))
-	self.userPaneToggle = Tkinter.Button(self.chatPane, text=">", command=self.toggleUserPane)
-	self.userPaneToggle.grid(row=0, column=2, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
-	self.chatGrid = Tkinter.Frame(self.chatPane)
-	kwargs = {}
-	if (self.preferences.get('chatColor')):
-	    kwargs['foreground'] = self.preferences.get('chatColor')
-	if (self.preferences.get('chatBgColor')):
-	    kwargs['background'] = self.preferences.get('chatBgColor')
-	if (self.preferences.get('wrapChatText')):
-	    kwargs['wrap'] = Tkinter.WORD
-	else:
-	    kwargs['wrap'] = Tkinter.NONE
-	self.chatBox = Tkinter.Text(self.chatGrid, **kwargs)
-	self.chatBox.bind("<Control-c>", self.copyChat)
-	self.chatBox.bind("<Control-f>", self.startChatSearch)
-	self.chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
-	self.chatBox.bind("<Key>", self.handleChatKey)
-	self.chatBox.bind("<FocusOut>", self.stopChatSearch)
-	self.chatBox.bind("<Button>", self.stopChatSearch)
-	self.chatBox.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
-	self.chatVScroll = Tkinter.Scrollbar(self.chatGrid, command=self.chatBox.yview)
-	self.chatVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
-	self.chatHScroll = Tkinter.Scrollbar(self.chatGrid, orient=Tkinter.HORIZONTAL, command=self.chatBox.xview)
-	self.chatHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
-	self.chatBox.configure(xscrollcommand=self.chatHScroll.set, yscrollcommand=self.chatVScroll.set)
-	self.chatGrid.columnconfigure(0, weight=1)
-	self.chatGrid.rowconfigure(0, weight=1)
-	self.chatGrid.grid(row=1, column=0, columnspan=3, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	self.channelTabs.grid(row=0, column=0, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	self.scratchBut = Tkinter.Menubutton(self.chatPane, text="Scratch", relief=Tkinter.RAISED)
 	self.scratchMen = Tkinter.Menu(self.scratchBut, tearoff=False)
 	self.scratchMen.add_command(label="Scratch Input", command=self.scratchInput)
 	self.scratchMen.add_separator()
 	self.scratchBut.config(menu=self.scratchMen)
-	self.scratchBut.grid(row=2, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	self.scratchBut.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 	kwargs = {}
 	if (self.preferences.get('chatColor')):
 	    kwargs['foreground'] = self.preferences.get('chatColor')
@@ -340,7 +313,7 @@ class MainGui(Tkinter.Frame):
 	self.chatInputBox.bind("<Up>", self.inputUpHistory)
 	self.chatInputBox.bind("<Down>", self.inputDownHistory)
 	self.chatInputBox.bind("<Key>", self.inputTabComplete)
-	self.chatInputBox.grid(row=2, column=1, columnspan=2, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	self.chatInputBox.grid(row=1, column=1, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
 #####
 ##
 	#?emotes menu?
@@ -348,7 +321,7 @@ class MainGui(Tkinter.Frame):
 ##
 #####
 	self.chatPane.columnconfigure(1, weight=1)
-	self.chatPane.rowconfigure(1, weight=1)
+	self.chatPane.rowconfigure(0, weight=1)
 	self.panes.add(self.chatPane, stretch="always")
 
 	# users pane
@@ -393,35 +366,17 @@ class MainGui(Tkinter.Frame):
 	self.rowconfigure(0, weight=1)
 	self.pack(fill="both", expand=True)
 
-	# configure global text tags
-	kwargs = {}
-	if (self.preferences.get('timestampColor')):
-	    kwargs['foreground'] = self.preferences.get('timestampColor')
-	elif (self.preferences.get('chatColor')):
-	    kwargs['foreground'] = self.preferences.get('chatColor')
-	if (self.preferences.get('timestampBgColor')):
-	    kwargs['background'] = self.preferences.get('timestampBgColor')
-	elif (self.preferences.get('chatBgColor')):
-	    kwargs['background'] = self.preferences.get('chatBgColor')
-	if (kwargs):
-	    self.chatBox.tag_configure("tsColor", **kwargs)
+	# configure usage of global text tags
+	if ((self.preferences.get('timestampColor')) or (self.preferences.get('chatColor'))):
 	    self.useTsTag = True
-	kwargs = {}
-	if (self.preferences.get('chatColor')):
-	    kwargs['foreground'] = self.preferences.get('chatColor')
-	if (self.preferences.get('chatBgColor')):
-	    kwargs['background'] = self.preferences.get('chatBgColor')
-	if (kwargs):
-	    self.chatBox.tag_configure("msgColor", **kwargs)
+	if ((self.preferences.get('timestampBgColor')) or (self.preferences.get('chatBgColor'))):
+	    self.useTsTag = True
+	if ((self.preferences.get('chatColor')) or (self.preferences.get('chatBgColor'))):
 	    self.useMsgTag = True
 	kwargs = self.getFontArgs()
 	if (kwargs):
 	    self.msgFont = tkFont.Font(**kwargs)
-	    self.chatBox.tag_configure("msgFont", font=self.msgFont)
 	    self.useFontTag = True
-	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
-	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
-	self.chatBox.tag_configure("invertColor", foreground=bgColor, background=fgColor)
 
 	self.master.protocol("WM_DELETE_WINDOW", self.interceptExit)
 
@@ -480,8 +435,6 @@ class MainGui(Tkinter.Frame):
 	if (not log):
 	    tkMessageBox.showerror("Error", "Unable to load file.")
 	    return
-	channelDict = {'logPath': path, 'channelName': channelName, 'log': log,
-			'users': {}, 'userLock': threading.Lock()}
 #####
 ##
 	#channel=something to identify tab as a log of channel channelName from date log[0][1]
@@ -492,18 +445,18 @@ class MainGui(Tkinter.Frame):
 	    return
 ##
 #####
-	self.channels[channel] = channelDict
-	self.channelOrder.append(channel)
-	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
-	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
+	self.setupChannel(channel)
+	self.channels[channel]['logPath'] = path
+	self.channels[channel]['channelName'] = channelName
 	self.channelTabs.select(len(self.channelOrder) - 1)
 	self.curChannel = channel
+	self.chatBox = self.channels[channel]['chatBox']
 	self.userListLock.acquire()
 	self.usersToUpdate = []
 	self.userList.delete(0, Tkinter.END)
 	self.userCountBox.configure(text="0 users")
 	self.userListLock.release()
-	self.populateChat(log)
+	self.populateChat(self.channels[channel]['chatBox'], log)
 
     def saveLog(self):
 	if ((not self.curChannel) or (not self.channels.get(self.curChannel, {}).get('log'))):
@@ -573,8 +526,8 @@ class MainGui(Tkinter.Frame):
 	self.preferences['showTimestamps'] = not self.getPreference('showTimestamps')
 	self.configTimestampVar.set(int(self.preferences['showTimestamps']))
 	self.savePreferences()
-	if (self.curChannel):
-	    self.populateChat(self.channels[self.curChannel]['log'])
+	for channel in self.channels.keys():
+	    self.populateChat(self.channels[channel]['chatBox'], self.channels[self.curChannel]['log'])
 
     def toggleChatWrap(self):
 	self.preferences['wrapChatText'] = not self.getPreference('wrapChatText')
@@ -584,10 +537,11 @@ class MainGui(Tkinter.Frame):
 	    wrap = Tkinter.WORD
 	else:
 	    wrap = Tkinter.NONE
-	self.chatBox.config(wrap=wrap)
+	for channel in self.channels.keys():
+	    self.channels[channel]['chatBox'].config(wrap=wrap)
 
-	if (self.curChannel):
-	    self.populateChat(self.channels[self.curChannel]['log'])
+	for channel in self.channels.keys():
+	    self.populateChat(self.channels[channel]['chatBox'], self.channels[self.curChannel]['log'])
 
     def toggleUserPane(self):
 	w = self.master.winfo_width()
@@ -596,12 +550,10 @@ class MainGui(Tkinter.Frame):
 	y = self.master.winfo_y()
 	if (self.preferences.get('userPaneVisible')):
 	    self.panes.remove(self.userPane)
-	    self.userPaneToggle.configure(text="<")
 	    self.preferences['userPaneVisible'] = False
 	    self.configUserVar.set(0)
 	else:
 	    self.panes.add(self.userPane, stretch="always")
-	    self.userPaneToggle.configure(text=">")
 	    self.preferences['userPaneVisible'] = True
 	    self.configUserVar.set(1)
 	self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
@@ -875,15 +827,15 @@ class MainGui(Tkinter.Frame):
 	    self.prefFontBoldBox.configure(command=self.updateFontBold)
 	    self.prefFontItalicBox.configure(command=self.updateFontItalic)
 	    self.prefBrightThreshBox.configure(command=self.updateBrightThresh)
-	fgColor = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	fgColor = self.getPreference('chatColor', self.translateColor(self.prefFontExampleBox.cget('fg')))
 	self.prefChatColorEx.config(background=fgColor)
-	bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	bgColor = self.getPreference('chatBgColor', self.translateColor(self.prefFontExampleBox.cget('bg')))
 	self.prefChatBgColorEx.config(background=bgColor)
 	tsClr = self.getPreference('timestampColor', fgColor)
 	self.prefTsColorEx.config(background=tsClr)
 	tsBgClr = self.getPreference('timestampBgColor', bgColor)
 	self.prefTsBgColorEx.config(background=tsBgClr)
-	fontAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	fontAttrs = tkFont.nametofont(self.prefFontExampleBox.cget('font')).actual()
 	fFam = self.getPreference('chatFontFamily', fontAttrs.get('family', tkFont.families()[0]))
 	self.prefFontFam.set(fFam)
 	fSize = self.getPreference('chatFontSize', fontAttrs.get('size', 12))
@@ -1105,6 +1057,7 @@ class MainGui(Tkinter.Frame):
 	if ((idx < 0) or (idx >= len(self.channelOrder)) or (self.channelOrder[idx] == self.curChannel)):
 	    return
 	self.curChannel = self.channelOrder[idx]
+	self.chatBox = self.channels[self.curChannel]['chatBox']
 	self.unreadLock.acquire()
 	if (self.curChannel in self.unreadChannels):
 	    self.unreadChannels.remove(self.curChannel)
@@ -1112,8 +1065,7 @@ class MainGui(Tkinter.Frame):
 	self.channels[self.curChannel]['unreadLock'].acquire()
 	self.channels[self.curChannel]['unread'] = 0
 	self.channels[self.curChannel]['unreadLock'].release()
-	self.channelTabs.tab(idx, text=self.channels[self.curChannel].get('channelName', self.curChannel))
-	self.populateChat(self.channels[self.curChannel]['log'])
+	self.channelTabs.tab(idx, text=self.curChannel)
 	self.userListLock.acquire()
 	self.usersToUpdate = []
 	self.userList.delete(0, Tkinter.END)
@@ -1142,15 +1094,12 @@ class MainGui(Tkinter.Frame):
 	self.channelOrder = self.channelOrder[:idx] + self.channelOrder[idx + 1:]
 	del self.channels[channel]
 	self.curChannel = None
+	self.chatBox = None
 	if (not self.channels):
-	    self.chatBoxLock.acquire()
-	    self.chatBox.delete("1.0", Tkinter.END)
-	    self.chatBoxLock.release()
 	    self.userListLock.acquire()
 	    self.userList.delete(0, Tkinter.END)
 	    self.userCountBox.configure(text="0 users")
 	    self.userListLock.release()
-	self.removeTags(channel)
 
     def copyChat(self, e):
 	self.chatBox.clipboard_clear()
@@ -1377,7 +1326,7 @@ class MainGui(Tkinter.Frame):
 	return val[1]
 
     def chooseChatColor(self):
-	clr = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	clr = self.getPreference('chatColor', self.translateColor(self.prefFontExampleBox.cget('fg')))
 	clr = self.prefsToSet.get('chatColor', clr)
 	clr = self.chooseColor("Chat Foreground", 'chatColor', clr, self.prefChatColorEx,
 				"exMsgColor", 'foreground')
@@ -1386,7 +1335,7 @@ class MainGui(Tkinter.Frame):
 	    self.prefFontExampleBox.tag_configure("exTsColor", foreground=clr)
 
     def chooseChatBgColor(self):
-	clr = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	clr = self.getPreference('chatBgColor', self.translateColor(self.prefFontExampleBox.cget('bg')))
 	clr = self.prefsToSet.get('chatBgColor', clr)
 	clr = self.chooseColor("Chat Background", 'chatBgColor', clr, self.prefChatBgColorEx,
 				"exMsgColor", 'background')
@@ -1398,7 +1347,7 @@ class MainGui(Tkinter.Frame):
 		self.prefFontExampleBox.tag_configure("exTsColor", background=clr)
 
     def chooseTsColor(self):
-	chatClr = self.getPreference('chatColor', self.translateColor(self.chatBox.cget('fg')))
+	chatClr = self.getPreference('chatColor', self.translateColor(self.prefFontExampleBox.cget('fg')))
 	chatClr = self.prefsToSet.get('chatColor', chatClr)
 	clr = self.getPreference('timestampColor', chatClr)
 	clr = self.prefsToSet.get('timestampColor', clr)
@@ -1406,7 +1355,7 @@ class MainGui(Tkinter.Frame):
 			    "exTsColor", 'foreground')
 
     def chooseTsBgColor(self):
-	chatClr = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	chatClr = self.getPreference('chatBgColor', self.translateColor(self.prefFontExampleBox.cget('bg')))
 	chatClr = self.prefsToSet.get('chatBgColor', clr)
 	clr = self.getPreference('timestampBgColor', chatClr)
 	clr = self.prefsToSet.get('timestampBgColor', clr)
@@ -1441,7 +1390,7 @@ class MainGui(Tkinter.Frame):
 
     def updateBrightExampleBox(self, bgColor=None):
 	if (not bgColor):
-	    bgColor = self.getPreference('chatBgColor', self.translateColor(self.chatBox.cget('bg')))
+	    bgColor = self.getPreference('chatBgColor', self.translateColor(self.prefFontExampleBox.cget('bg')))
 	    bgColor = self.prefsToSet.get('chatBgColor', bgColor)
 	self.prefBrightExampleBox.config(bg=bgColor)
 	threshold = self.prefsToSet.get('brightnessThreshold', self.getPreference('brightnessThreshold'))
@@ -1523,7 +1472,15 @@ class MainGui(Tkinter.Frame):
 	    self.prefApplyBut.config(state=Tkinter.NORMAL)
 
     def prefFontReset(self):
-	font = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	chatBox = self.chatBox
+	if (not chatBox):
+	    for channel in self.channels.keys():
+		chatBox = self.channels[channel].get('chatBox')
+		if (chatBox):
+		    break
+	if (not chatBox):
+	    chatBox = Tkinter.Text(self.preferencesWin)
+	font = tkFont.nametofont(chatBox.cget('font')).actual()
 	for (prefKey, fontKey, var) in [('chatFontFamily', 'family', self.prefFontFam),
 					('chatFontSize', 'size', self.prefFontSize)]:
 	    if (self.prefsToSet.has_key(prefKey)):
@@ -1636,14 +1593,16 @@ class MainGui(Tkinter.Frame):
 #####
 	    self.preferences[pref] = self.prefsToSet[pref]
 	    if (pref == 'chatColor'):
-		self.chatBox.tag_configure("msgColor", foreground=self.prefsToSet[pref])
-		self.chatBox.tag_configure("invertColor", background=self.prefsToSet[pref])
-		self.chatBox.config(fg=self.prefsToSet[pref])
+		for channel in self.channels.keys():
+		    self.channels[channel]['chatBox'].tag_configure("msgColor", foreground=self.prefsToSet[pref])
+		    self.channels[channel]['chatBox'].tag_configure("invertColor", background=self.prefsToSet[pref])
+		    self.channels[channel]['chatBox'].config(fg=self.prefsToSet[pref])
 		self.chatInputBox.config(fg=self.prefsToSet[pref])
 	    elif (pref == 'chatBgColor'):
-		self.chatBox.tag_configure("msgColor", background=self.prefsToSet[pref])
-		self.chatBox.tag_configure("invertColor", foreground=self.prefsToSet[pref])
-		self.chatBox.config(bg=self.prefsToSet[pref])
+		for channel in self.channels.keys():
+		    self.channels[channel]['chatBox'].tag_configure("msgColor", background=self.prefsToSet[pref])
+		    self.channels[channel]['chatBox'].tag_configure("invertColor", foreground=self.prefsToSet[pref])
+		    self.channels[channel]['chatBox'].config(bg=self.prefsToSet[pref])
 		self.chatInputBox.config(bg=self.prefsToSet[pref])
 	    elif (pref == 'chatFontFamily'):
 		if (self.msgFont):
@@ -1672,9 +1631,11 @@ class MainGui(Tkinter.Frame):
 		else:
 		    self.msgFont = tkFont.Font(**self.getFontArgs())
 	    elif (pref == 'timestampColor'):
-		self.chatBox.tag_configure("tsColor", foreground=self.prefsToSet[pref])
+		for channel in self.channels.keys():
+		    self.channels[channel]['chatBox'].tag_configure("tsColor", foreground=self.prefsToSet[pref])
 	    elif (pref == 'timestampBgColor'):
-		self.chatBox.tag_configure("tsColor", background=self.prefsToSet[pref])
+		for channel in self.channels.keys():
+		    self.channels[channel]['chatBox'].tag_configure("tsColor", background=self.prefsToSet[pref])
 	    elif (pref in CHAT_PREFERENCES):
 		updateChat = True
 	    elif (pref == 'userColor'):
@@ -1687,7 +1648,8 @@ class MainGui(Tkinter.Frame):
 		    wrap = Tkinter.WORD
 		else:
 		    wrap = Tkinter.NONE
-		self.chatBox.config(wrap=wrap)
+		for channel in self.channels.keys():
+		    self.channels[channel]['chatBox'].config(wrap=wrap)
 #####
 ##
 	    #maxScratchWidth: repopulate self.scratchMen
@@ -1700,20 +1662,22 @@ class MainGui(Tkinter.Frame):
 		y = self.master.winfo_y()
 		if (self.prefsToSet['userPaneVisible']):
 		    self.panes.add(self.userPane, stretch="always")
-		    self.userPaneToggle.configure(text=">")
 		    self.configUserVar.set(1)
 		else:
 		    self.panes.remove(self.userPane)
-		    self.userPaneToggle.configure(text="<")
 		    self.configUserVar.set(0)
 		self.master.geometry("%sx%s+%s+%s" % (w, h, x, y))
 	if ((self.prefsToSet.has_key('chatColor')) and (not self.preferences.has_key('timestampColor'))):
-	    self.chatBox.tag_configure("tsColor", foreground=self.prefsToSet['chatColor'])
+	    for channel in self.channels.keys():
+		self.channels[channel]['chatBox'].tag_configure("tsColor", foreground=self.prefsToSet['chatColor'])
 	if ((self.prefsToSet.has_key('chatBgColor')) and (not self.preferences.has_key('timestampBgColor'))):
-	    self.chatBox.tag_configure("tsColor", background=self.prefsToSet['chatBgColor'])
+	    for channel in self.channels.keys():
+		self.channels[channel]['chatBox'].tag_configure("tsColor",
+								background=self.prefsToSet['chatBgColor'])
 	self.savePreferences()
-	if ((updateChat) and (self.curChannel)):
-	    self.populateChat(self.channels[self.curChannel]['log'])
+	if (updateChat):
+	    for channel in self.channels.keys():
+		self.populateChat(self.channels[channel]['chatBox'], self.channels[self.curChannel]['log'])
 	self.prefApplyBut.config(state=Tkinter.DISABLED)
 
     def favoriteDelete(self):
@@ -2008,6 +1972,68 @@ class MainGui(Tkinter.Frame):
     def getPreference(self, pref, default=None):
 	return self.preferences.get(pref, DEFAULT_PREFERENCES.get(pref, default))
 
+    def setupChannel(self, channel):
+	chatGrid = Tkinter.Frame(self.chatPane)
+	kwargs = {}
+	if (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	if (self.preferences.get('wrapChatText')):
+	    kwargs['wrap'] = Tkinter.WORD
+	else:
+	    kwargs['wrap'] = Tkinter.NONE
+	chatBox = Tkinter.Text(chatGrid, **kwargs)
+	chatBox.bind("<Control-c>", self.copyChat)
+	chatBox.bind("<Control-f>", self.startChatSearch)
+	chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
+	chatBox.bind("<Key>", self.handleChatKey)
+	chatBox.bind("<FocusOut>", self.stopChatSearch)
+	chatBox.bind("<Button>", self.stopChatSearch)
+	chatBox.grid(row=0, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	chatVScroll = Tkinter.Scrollbar(chatGrid, command=chatBox.yview)
+	chatVScroll.grid(row=0, column=1, sticky=(Tkinter.E, Tkinter.N, Tkinter.S))
+	chatHScroll = Tkinter.Scrollbar(chatGrid, orient=Tkinter.HORIZONTAL, command=chatBox.xview)
+	chatHScroll.grid(row=1, column=0, sticky=(Tkinter.W, Tkinter.E, Tkinter.N))
+	chatBox.configure(xscrollcommand=chatHScroll.set, yscrollcommand=chatVScroll.set)
+	chatGrid.columnconfigure(0, weight=1)
+	chatGrid.rowconfigure(0, weight=1)
+	chatGrid.grid(row=1, column=0, columnspan=3, sticky=(Tkinter.W, Tkinter.E, Tkinter.N, Tkinter.S))
+	# configure global text tags
+	kwargs = {}
+	if (self.preferences.get('timestampColor')):
+	    kwargs['foreground'] = self.preferences.get('timestampColor')
+	elif (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('timestampBgColor')):
+	    kwargs['background'] = self.preferences.get('timestampBgColor')
+	elif (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	if (kwargs):
+	    chatBox.tag_configure("tsColor", **kwargs)
+	kwargs = {}
+	if (self.preferences.get('chatColor')):
+	    kwargs['foreground'] = self.preferences.get('chatColor')
+	if (self.preferences.get('chatBgColor')):
+	    kwargs['background'] = self.preferences.get('chatBgColor')
+	if (kwargs):
+	    chatBox.tag_configure("msgColor", **kwargs)
+	if (self.useFontTag):
+	    chatBox.tag_configure("msgFont", font=self.msgFont)
+	fgColor = self.getPreference('chatColor', self.translateColor(chatBox.cget('fg')))
+	bgColor = self.getPreference('chatBgColor', self.translateColor(chatBox.cget('bg')))
+	chatBox.tag_configure("invertColor", foreground=bgColor, background=fgColor)
+	self.channels[channel] = {
+		'users':	{},
+		'log':		[],
+		'userLock':	threading.Lock(),
+		'unread':	0,
+		'unreadLock':	threading.Lock(),
+		'chatBox':	chatBox}
+	self.channelOrder.append(channel)
+	self.channelTabs.add(chatGrid, text=channel)
+	self.channelTabs.select(len(self.channelOrder) - 1)
+
     def doChannelOpen(self, channel):
 	if (not channel):
 	    return
@@ -2040,20 +2066,10 @@ class MainGui(Tkinter.Frame):
 		self.preferences['userDisplay'] = self.chat.displayName
 	    if (self.chat.userId):
 		self.preferences['userId'] = self.chat.userId
-	self.channels[channel] = {
-		'users':	{},
-		'log':		[],
-		'userLock':	threading.Lock(),
-		'unread':	0,
-		'unreadLock':	threading.Lock()}
-	self.channelOrder.append(channel)
-	self.channels[channel]['frame'] = Tkinter.Frame(self.channelTabs)
-	self.channelTabs.add(self.channels[channel]['frame'], text=channel)
+	self.setupChannel(channel)
 	self.channelTabs.select(len(self.channelOrder) - 1)
 	self.curChannel = channel
-	self.chatBoxLock.acquire()
-	self.chatBox.delete("1.0", Tkinter.END)
-	self.chatBoxLock.release()
+	self.chatBox = self.channels[channel]['chatBox']
 	self.userListLock.acquire()
 	self.userList.delete(0, Tkinter.END)
 	self.userCountBox.configure(text="0 users")
@@ -2165,20 +2181,28 @@ class MainGui(Tkinter.Frame):
 	if (self.preferences.get('chatFontItalic')):
 	    retval['slant'] = "italic"
 	if ((retval) or (force)):
-	    defaultAttrs = tkFont.nametofont(self.chatBox.cget('font')).actual()
+	    chatBox = self.chatBox
+	    if (not chatBox):
+		for channel in self.channels.keys():
+		    chatBox = self.channels[channel].get('chatBox')
+		    if (chatBox):
+			break
+	    if (not chatBox):
+		chatBox = Tkinter.Text(self.preferencesWin)
+	    defaultAttrs = tkFont.nametofont(chatBox.cget('font')).actual()
 	    for kw in ['family', 'weight', 'slant', 'overstrike', 'underline', 'size']:
 		if ((not retval.has_key(kw)) and (defaultAttrs.has_key(kw))):
 		    retval[kw] = defaultAttrs[kw]
 	return retval
 
-    def populateChat(self, log, reverse=True):
-	self.chatBoxLock.acquire()
-	self.chatBox.delete("1.0", Tkinter.END)
+    def populateChat(self, chatBox, log, reverse=True):
+	self.chatQueueLock.acquire()
+	chatBox.delete("1.0", Tkinter.END)
 	if (reverse):
-	    self.chatToPopulateReverse = log[:]
+	    self.chatToPopulateReverse.append((chatBox, log[:]))
 	else:
-	    self.chatToPopulate = log[:]
-	self.chatBoxLock.release()
+	    self.chatToPopulate.append((chatBox, log[:]))
+	self.chatQueueLock.release()
 	if (self.chatPopulateThread is None):
 	    self.chatPopulateThread = self.after(0, self.populateChatThreadHandler)
 
@@ -2186,16 +2210,22 @@ class MainGui(Tkinter.Frame):
 	if ((not self.chatToPopulate) and (not self.chatToPopulateReverse)):
 	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
 	    return
-	self.chatBoxLock.acquire()
+	self.chatQueueLock.acquire()
 	if ((not self.chatToPopulate) and (not self.chatToPopulateReverse)):
-	    self.chatBoxLock.release()
+	    self.chatQueueLock.release()
 	    self.chatPopulateThread = self.after(int(CHAT_POPULATE_INTERVAL * 1000), self.populateChatThreadHandler)
 	    return
 	if (self.chatToPopulate):
-	    logLine = self.chatToPopulate.pop(0)
+	    chatBox = self.chatToPopulate[0][0]
+	    logLine = self.chatToPopulate[0][1].pop(0)
+	    if (not self.chatToPopulate[0][1]):
+		self.chatToPopulate.pop(0)
 	    reversed = False
 	else:
-	    logLine = self.chatToPopulateReverse.pop()
+	    chatBox = self.chatToPopulateReverse[0][0]
+	    logLine = self.chatToPopulateReverse[0][1].pop()
+	    if (not self.chatToPopulateReverse[0][1]):
+		self.chatToPopulateReverse.pop(0)
 	    reversed = True
 	if (logLine[0] != EVENT_MSG):
 	    doUserJoin = False
@@ -2214,13 +2244,13 @@ class MainGui(Tkinter.Frame):
 		userBadges = []
 		emotes = []
 	    else:
-		self.chatBoxLock.release()
+		self.chatQueueLock.release()
 		self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
 		return
 	else:
 	    (e, ts, user, msg, userDisplay, userColor, userBadges, emotes) = logLine
 	if (userColor):
-	    self.setupTag(self.curChannel, userColor)
+	    self.setupTag(chatBox, userColor)
 	tsTags = []
 	userTags = []
 	msgTags = []
@@ -2240,7 +2270,7 @@ class MainGui(Tkinter.Frame):
 	userTags = tuple(userTags)
 	msgTags = tuple(msgTags)
 	invertTags = tuple(invertTags)
-	oldPos = self.chatBox.yview()
+	oldPos = chatBox.yview()
 	chunks = []
 	if (self.preferences.get('showTimestamps')):
 	    tsFmt = self.getPreference('timestampFormat')
@@ -2275,11 +2305,11 @@ class MainGui(Tkinter.Frame):
 #####
 ##
 		#look for links
-		#grab self.chatBox.index(Tkinter.END) before and after inserting link
-		#self.chatBox.tag_configure("link", underline=1)
-		#self.chatBox.tag_bind("link", "<Enter>", lambda: self.chatBox.config(cursor="arrow")
-		#self.chatBox.tag_bind("link", "<Leave>", lambda: self.chatBox.config(cursor="xterm")
-		#self.chatBox.tag_bind("link", "<Mouse-1>", lambda e: self.chatBox.index("@%s,%s"%(e.x, e.y))
+		#grab chatBox.index(Tkinter.END) before and after inserting link
+		#chatBox.tag_configure("link", underline=1)
+		#chatBox.tag_bind("link", "<Enter>", lambda: chatBox.config(cursor="arrow")
+		#chatBox.tag_bind("link", "<Leave>", lambda: chatBox.config(cursor="xterm")
+		#chatBox.tag_bind("link", "<Mouse-1>", lambda e: chatBox.index("@%s,%s"%(e.x, e.y))
 		# split chunk into mentions and chunks between mentions
 		chunkIdx = 0
 		for m in exp.finditer(chunk):
@@ -2319,10 +2349,15 @@ class MainGui(Tkinter.Frame):
 	    insertPos = "1.0"
 	    chunks.reverse()
 	for (msg, tag) in chunks:
-	    self.chatBox.insert(insertPos, msg, tag)
+	    chatBox.insert(insertPos, msg, tag)
 	if ((type(oldPos) != type(())) or (len(oldPos) != 2) or (oldPos[1] == 1)):
-	    self.chatBox.see(Tkinter.END)
-	self.chatBoxLock.release()
+#####
+##
+	    #maybe only do this for foreground channel (or maybe option for that)
+	    chatBox.see(Tkinter.END)
+##
+#####
+	self.chatQueueLock.release()
 	self.chatPopulateThread = self.after_idle(self.populateChatThreadHandler)
 
     def updateUserThreadHandler(self):
@@ -2409,20 +2444,21 @@ class MainGui(Tkinter.Frame):
 	    self.chatBox.mark_set(Tkinter.INSERT, pos)
 	    self.chatBox.see(pos)
 
-    def setupTag(self, channel, color):
+    def setupTag(self, chatBox, color):
 	if (not color):
 	    return
-	if (self.chatTags.has_key(color)):
-	    self.chatTags[color].add(channel)
+	if (not self.chatTags.has_key(chatBox)):
+	    self.chatTags[chatBox] = set()
+	if (color in self.chatTags[chatBox]):
 	    return
-	self.chatTags[color] = set([color])
+	self.chatTags[chatBox].add(color)
 	kwargs = {'foreground': color}
 	bgColor = self.preferences.get('chatBgColor')
 	needBg = True
 	if (not bgColor):
 	    needBg = False
 	    try:
-		bgColor = self.translateColor(self.chatBox.cget('bg'))
+		bgColor = self.translateColor(chatBox.cget('bg'))
 	    except Tkinter.TclError:
 		bgColor = self.translateColor("SystemWindow")
 	adjustedBg = self.adjustHexColor(bgColor, color)
@@ -2430,15 +2466,7 @@ class MainGui(Tkinter.Frame):
 	    needBg = True
 	if (needBg):
 	    kwargs['background'] = adjustedBg
-	self.chatBox.tag_configure(color, **kwargs)
-
-    def removeTags(self, channel):
-	for color in self.chatTags.keys():
-	    if (channel not in self.chatTags[color]):
-		continue
-	    self.chatTags[color].remove(channel)
-	    if (not self.chatTags[color]):
-		self.chatBox.tag_delete(color)
+	chatBox.tag_configure(color, **kwargs)
 
     def getCurMacroParent(self):
 	if ((not self.curMacro) or (self.curMacro[-1] < 0)):
