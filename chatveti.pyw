@@ -182,6 +182,14 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	if (self.master.chatPopulateThread is None):
 	    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 
+#####
+##
+    #temporary for investigating twitch commands
+    def otherCommand(self, command, tags, prefix, params):
+	print "%s: c=%s t=%s p=%s a=%s"%(time.strftime("%H%M%S"),command,tags,prefix,params)
+##
+#####
+
 
 class MainGui(Tkinter.Frame):
     def __init__(self, master=None):
