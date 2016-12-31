@@ -82,15 +82,14 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	self.master.channels[channel]['users'][user] = {'display': user}
 	self.master.channels[channel]['userLock'].release()
 	self.master.channels[channel]['log'].append((EVENT_JOIN, time.time(), user))
-	if (channel != self.master.curChannel):
-	    return
-	userSort = self.master.getSortedUsers(channel)
-	idx = userSort.index(user)
-	self.master.userListLock.acquire()
-	self.master.usersToUpdate.append((EVENT_JOIN, user, idx))
-	self.master.userListLock.release()
-	if (self.master.userUpdateThread is None):
-	    self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
+	if (channel == self.master.curChannel):
+	    userSort = self.master.getSortedUsers(channel)
+	    idx = userSort.index(user)
+	    self.master.userListLock.acquire()
+	    self.master.usersToUpdate.append((EVENT_JOIN, user, idx))
+	    self.master.userListLock.release()
+	    if (self.master.userUpdateThread is None):
+		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
 	if (self.master.preferences.get('userJoinNotifications')):
 	    msg = "%s joined the channel" % user
 	    logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
@@ -114,14 +113,14 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.userListLock.release()
 	    if (self.master.userUpdateThread is None):
 		self.master.userUpdateThread = self.master.after(0, self.master.updateUserThreadHandler)
-	    if (self.master.preferences.get('userJoinNotifications')):
-		msg = "%s left the channel" % user
-		logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
-		self.master.chatQueueLock.acquire()
-		self.master.chatToPopulate.append((self.master.channels[channel]['chatBox'], [logLine]))
-		self.master.chatQueueLock.release()
-		if (self.master.chatPopulateThread is None):
-		    self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
+	if (self.master.preferences.get('userJoinNotifications')):
+	    msg = "%s left the channel" % user
+	    logLine = (EVENT_MSG, time.time(), "<System>", msg, "<System>", None, [], [])
+	    self.master.chatQueueLock.acquire()
+	    self.master.chatToPopulate.append((self.master.channels[channel]['chatBox'], [logLine]))
+	    self.master.chatQueueLock.release()
+	    if (self.master.chatPopulateThread is None):
+		self.master.chatPopulateThread = self.master.after(0, self.master.populateChatThreadHandler)
 	self.master.channels[channel]['userLock'].acquire()
 	del self.master.channels[channel]['users'][user]
 	self.master.channels[channel]['userLock'].release()
