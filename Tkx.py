@@ -144,7 +144,7 @@ class _QueryCompound(tkSimpleDialog.Dialog):
 		    kwargs['max'] = p['maxvalue']
 		if (p.has_key('step')):
 		    kwargs['step'] = p['step']
-		entry = Tix.Control(master, variable=entryVar, integer=True, **kwargs)
+		entry = Tix.Control(master, variable=entryVar, selectmode="immediate", integer=True, **kwargs)
 	    elif (p['type'] == TYPE_FLOAT):
 		entryVar = Tkinter.DoubleVar()
 		kwargs = {}
@@ -154,7 +154,7 @@ class _QueryCompound(tkSimpleDialog.Dialog):
 		    kwargs['max'] = p['maxvalue']
 		if (p.has_key('step')):
 		    kwargs['step'] = p['step']
-		entry = Tix.Control(master, variable=entryVar, **kwargs)
+		entry = Tix.Control(master, variable=entryVar, selectmode="immediate", **kwargs)
 	    elif (p['type'] == TYPE_LIST):
 		entryVar = Tkinter.StringVar()
 		kwargs = {'values': p.get('values', [])}
