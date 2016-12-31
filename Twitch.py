@@ -303,6 +303,7 @@ class Chat:
 		    channel = decodeChannel(params[2])
 		    users = set(" ".join(params[3:]).split())
 		    self.callbacks.usersJoined(channel, users)
+		    continue
 		if (cmd == "USERSTATE"):
 		    if ((not params) or (not params[0])):
 			continue
