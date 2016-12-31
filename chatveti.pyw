@@ -166,7 +166,7 @@ class ChatCallbackFunctions(Twitch.ChatCallbacks):
 	    self.master.unreadLock.release()
 	    if (self.master.updateUnreadThread is None):
 		self.master.updateUnreadThread = self.master.after(0, self.master.updateUnreadHandler)
-	    return
+	    updateUserList = False
 	if (updateUserList):
 	    self.master.userListLock.acquire()
 	    userSort = self.master.getSortedUsers(channel)
