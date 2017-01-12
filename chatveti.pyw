@@ -20,6 +20,8 @@ import Tkx
 import Twitch
 
 
+CLIENT_ID = "8ttcvo44qr7774zw9hounn1bcx2lnk2"
+
 DEFAULT_PREFERENCES = {
     'brightnessThreshold':	80,
     'latinThreshold':		1,
@@ -53,6 +55,9 @@ USER_TOKEN_EXP = re.compile("\s+|@")
 
 COLOR_FACTORS = (0.299, 0.587, 0.114) # make sure sum(COLOR_FACTORS) == 1 and all factors strictly between 0 and 1
 
+
+def sortKeyCaseInsensitive(s):
+    return s.lower() + s
 
 def getColorBrightness(c):
 #####
@@ -886,7 +891,7 @@ class MainGui(Tkinter.Frame):
 	    return
 	favorites = self.preferences.get('favorites', [])
 	favorites.append(channel)
-	favorites.sort(key=lambda c: c.lower())
+	favorites.sort(key=sortKeyCaseInsensitive)
 	self.preferences['favorites'] = favorites
 	self.savePreferences()
 	idx = self.preferences['favorites'].index(channel)
@@ -1273,7 +1278,7 @@ class MainGui(Tkinter.Frame):
 	scopes=Twitch.DEFAULT_SCOPES
 ##
 #####
-	(oauth, scopes) = Twitch.getOauth(scopes, True)
+	(oauth, scopes) = Twitch.getOauth(CLIENT_ID, scopes, True)
 	if (not oauth):
 	    return
 	self.preferences['token'] = base64.b64encode(oauth)

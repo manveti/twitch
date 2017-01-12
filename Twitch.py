@@ -10,8 +10,6 @@ import urllib
 import webbrowser
 
 
-CLIENT_ID = "8ttcvo44qr7774zw9hounn1bcx2lnk2"
-
 REDIRECT_ADDR = ("localhost", 14425)
 REDIRECT_URI = "http://%s:%s" % REDIRECT_ADDR
 
@@ -65,8 +63,8 @@ IRC_MSG_EXP = re.compile(exp)
 IRC_PREFIX_EXP = re.compile("[@!.]")
 
 
-def getOauth(scopes=DEFAULT_SCOPES, force=False):
-    args = {'cid':	urllib.quote(CLIENT_ID),
+def getOauth(clientId, scopes=DEFAULT_SCOPES, force=False):
+    args = {'cid':	urllib.quote(clientId),
 	    'redirect':	urllib.quote(REDIRECT_URI),
 	    'scope':	urllib.quote(" ".join(scopes))}
     url = AUTH_URL_BASE + (AUTH_ARGS % args)
