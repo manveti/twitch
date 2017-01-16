@@ -1041,12 +1041,13 @@ class MainGui(Tkinter.Frame):
 		promptDict = promptDict.copy()
 		promptDict['values'] = self.getSortedUsers(self.curChannel)
 	    query.append(promptDict)
-	res = Tkx.askcompound("Macro Arguments", query)
-	if ((not res) or (len(res) != len(prompts))):
-	    return
 	args = {}
-	for i in xrange(len(prompts)):
-	    args[prompts[i][0]] = res[i]
+	if (query):
+	    res = Tkx.askcompound("Macro Arguments", query)
+	    if ((not res) or (len(res) != len(prompts))):
+		return
+	    for i in xrange(len(prompts)):
+		args[prompts[i][0]] = res[i]
 	s = format % args
 	self.inputHistory.append(s)
 	self.inputHistory = self.inputHistory[-self.preferences.get('maxInputHistory'):]
