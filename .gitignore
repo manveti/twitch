@@ -1,6 +1,6 @@
 apps.txt
 stuff.txt
-*.config
 *.pyc
-*.log
+data
+chatlogs
 junk

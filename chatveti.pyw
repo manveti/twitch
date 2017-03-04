@@ -55,6 +55,14 @@ USER_TOKEN_EXP = re.compile("\s+|@")
 
 COLOR_FACTORS = (0.299, 0.587, 0.114) # make sure sum(COLOR_FACTORS) == 1 and all factors strictly between 0 and 1
 
+LOG_DIR = os.path.join(os.path.dirname(__file__), "chatlogs")
+if (not os.path.exists(LOG_DIR)):
+    try:
+	os.makedirs(LOG_DIR)
+    except OSError:
+	# it's not the end of the world if we can't create the default directory for chat logs
+	pass
+
 
 def sortKeyCaseInsensitive(s):
     return s.lower() + s
@@ -385,7 +393,7 @@ class MainGui(Tkinter.Frame):
 	self.master.protocol("WM_DELETE_WINDOW", self.interceptExit)
 
     def loadPreferences(self):
-	self.preferences = shelve.open(os.path.join(os.path.dirname(__file__), ".config"), protocol=1)
+	self.preferences = shelve.open(os.path.join(os.path.dirname(__file__), "data", "cv.cfg"), protocol=1)
 
 	for pref in DEFAULT_PREFERENCES.keys():
 	    if (not self.preferences.has_key(pref)):
@@ -414,7 +422,11 @@ class MainGui(Tkinter.Frame):
 	self.doChannelOpen(tkSimpleDialog.askstring("Channel", "Enter channel to join"))
 
     def openLog(self):
-	path = tkFileDialog.askopenfilename(filetypes=[("All Files", "*"), ("Log Files", "*.log")])
+	args = {
+	    'filetypes': [("All Files", "*"), ("Log Files", "*.log")],
+	    'initialdir': LOG_DIR
+	}
+	path = tkFileDialog.askopenfilename(**args)
 	if (not path):
 	    return
 	f = None
@@ -484,6 +496,7 @@ class MainGui(Tkinter.Frame):
 	channelName = self.channels[self.curChannel].get('channelName', self.curChannel)
 	args = {
 	    'filetypes': [("All Files", "*"), ("Log Files", "*.log")],
+	    'initialdir': LOG_DIR,
 	    'initialfile': "%s_%s.log" % (channelName, time.strftime("%y%m%d_%H%M%S", startTime))
 	}
 	path = tkFileDialog.asksaveasfilename(**args)
@@ -499,6 +512,7 @@ class MainGui(Tkinter.Frame):
 	channelName = self.channels[self.curChannel].get('channelName', self.curChannel)
 	args = {
 	    'filetypes': [("All Files", "*"), ("Text Files", "*.txt")],
+	    'initialdir': LOG_DIR,
 	    'initialfile': "%s_%s.txt" % (channelName, time.strftime("%y%m%d_%H%M%S", startTime))
 	}
 	path = tkFileDialog.asksaveasfilename(**args)
