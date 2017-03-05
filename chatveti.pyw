@@ -1120,10 +1120,6 @@ class MainGui(Tkinter.Frame):
 	    self.userCountBox.configure(text="0 users")
 	    self.userListLock.release()
 
-    def copyChat(self, e):
-	self.chatBox.clipboard_clear()
-	self.chatBox.clipboard_append(self.chatBox.get("sel.first", "sel.last"))
-
     def startChatSearch(self, e):
 	self.searchBackwards = False
 	if (self.searchString is None):
@@ -2003,7 +1999,10 @@ class MainGui(Tkinter.Frame):
 	else:
 	    kwargs['wrap'] = Tkinter.NONE
 	chatBox = Tkinter.Text(chatGrid, **kwargs)
-	chatBox.bind("<Control-c>", self.copyChat)
+	def copyChat(e):
+	    chatBox.clipboard_clear()
+	    chatBox.clipboard_append(chatBox.get("sel.first", "sel.last"))
+	chatBox.bind("<Control-c>", copyChat)
 	chatBox.bind("<Control-f>", self.startChatSearch)
 	chatBox.bind("<Control-b>", self.startBackwardsChatSearch)
 	chatBox.bind("<Key>", self.handleChatKey)
